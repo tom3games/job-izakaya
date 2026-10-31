@@ -2,7 +2,7 @@
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { MUTE_LAUNCH, muteContext } from './mute.mjs'
-const PORT = 5472
+const PORT = 5481
 const server = spawn(process.execPath, ['server.mjs'], { cwd: import.meta.dirname, env: { ...process.env, PORT: String(PORT) } })
 await new Promise(r => setTimeout(r, 400))
 const b = await chromium.launch(MUTE_LAUNCH), ctx = await b.newContext({ viewport: { width: 844, height: 390 } }); await muteContext(ctx)

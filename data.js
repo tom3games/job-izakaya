@@ -13,7 +13,7 @@ window.IZ_DATA = {
   ],
   SHIFT: { sec: 180, h0: 17, h1: 23, wage: 1100, hours: 6 },
   // 円
-  YEN: { perCup: 50, wrong: 200, spillPerCup: 400, broken: 300, fall: 800, left: 1000 },
+  YEN: { perCup: 150, wrong: 200, spillPerCup: 400, broken: 300, fall: 800, left: 1000 },
   T: {
     ja: {
       badge: '1日だけ職場体験 #1', logo: '居酒屋<b>ホール</b>', start: '出勤する', how: '遊び方', back: 'もどる',
