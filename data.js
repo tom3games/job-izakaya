@@ -78,7 +78,7 @@ window.IZ_DATA = {
     { min: -1e9, st: { ja: 'クビ', en: 'FIRED' }, cmt: { ja: 'グラス代のほうが高くついたわ。明日から来んでええよ。', en: 'The glasses cost more than you. Don\'t come back.' } },
     { min: 2000, st: { ja: '要\n研修', en: 'NEEDS\nTRAINING' }, cmt: { ja: '一輪車はまあええわ。注文は覚えて。', en: 'The unicycle is fine. Remember the orders though.' } },
     { min: 5500, st: { ja: 'また\n来て', en: 'COME\nBACK' }, cmt: { ja: 'よう回してくれた。来週もシフト入れとくで。', en: 'You kept it moving. You\'re on next week too.' } },
-    { min: 8500, st: { ja: '社員\n候補', en: 'HIRE\nHIM' }, cmt: { ja: 'その一輪車さばき、うちの看板にしたい。', en: 'That unicycle work should be our mascot.' } },
+    { min: 8500, st: { ja: '社員\n候補', en: 'HIRE\nNOW' }, cmt: { ja: 'その一輪車さばき、うちの看板にしたい。', en: 'That unicycle work should be our mascot.' } },
   ],
   others: [
     { url: 'https://tom3games.github.io/elevator-fart/', ja: '密室おなら選手権', en: 'ELEVATOR FART', dj: 'エレベーターで、バレずにおなら', de: 'Fart in the elevator. Don\'t get caught' },
