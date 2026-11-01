@@ -75,9 +75,25 @@ await t('OGP 一式がある', async () => {
 const ev = (q, f, a) => q.evaluate(f, a)
 await t('タイトル: 文言と店長が出ている', async () => { const r = await ev(p, () => ({ logo: document.querySelector('.logo .main').textContent, lead: document.querySelector('[data-t=lead]').textContent })); expect(r.logo.includes('居酒屋') && r.lead.includes('一輪車'), JSON.stringify(r)); return r })
 await t('HUD にゲージ（バー・メーター）が無い', async () => { const n = await ev(p, () => document.querySelectorAll('progress,meter,[class*=bar],[class*=gauge],[class*=meter]').length); expect(n === 0, n) })
-await t('出勤: 遊ぶ画面・操作ボタン・時計', async () => { await p.click('#bStart'); await p.waitForTimeout(300); const r = await ev(p, () => ({ mode: IZ.S.mode, play: !document.querySelector('#vPlay').hidden, clock: document.querySelector('#hClock').textContent, btn: ['#bFwd', '#bBack', '#bJump'].every(s => document.querySelector(s).getBoundingClientRect().width >= 44) })); expect(r.mode === 'play' && r.play && r.btn, JSON.stringify(r)); return r })
-await t('初回のチュートリアル: 呼ばれた席へ の案内', async () => { await ev(p, () => { IZ.dbg.pause(true); IZ.dbg.step(120) }); const r = await ev(p, () => ({ hint: document.querySelector('#hint').textContent, hid: document.querySelector('#hint').hidden, call: IZ.S.tables.findIndex(t => t.st === 'call') })); expect(!r.hid && r.call >= 0 && /席/.test(r.hint), JSON.stringify(r)); return r })
-await t('右ボタンを押すと進む（押している間だけ）', async () => { const r = await ev(p, () => { const x0 = IZ.S.x; IZ.S.inF = 1; IZ.dbg.step(60); const x1 = IZ.S.x; IZ.S.inF = 0; IZ.dbg.step(120); return { x0, x1, v: IZ.S.v } }); expect(r.x1 > r.x0 + 1 && Math.abs(r.v) < 0.3, JSON.stringify(r)); return r })
+await t('出勤: 遊ぶ画面・操作ボタン・時計', async () => { await p.click('#bStart'); await p.waitForTimeout(300); const r = await ev(p, () => ({ mode: IZ.S.mode, play: !document.querySelector('#vPlay').hidden, clock: document.querySelector('#hClock').textContent, btn: ['#bFwd', '#bBack', '#bJump', '#bTurn'].every(s => document.querySelector(s).getBoundingClientRect().width >= 44) })); expect(r.mode === 'play' && r.play && r.btn, JSON.stringify(r)); return r })
+await t('初回のチュートリアル: 呼ばれた席へ の案内', async () => { await ev(p, () => { IZ.dbg.pause(true); IZ.dbg.step(120) }); const r = await ev(p, () => ({ hint: document.querySelector('#hint').textContent, hid: document.querySelector('#hint').hidden, call: IZ.S.tables.findIndex(t => t.st === 'call') })); expect(!r.hid && r.call >= 0 && /こぐ/.test(r.hint), JSON.stringify(r)); return r })
+const down = (q, sel) => q.evaluate(sel => document.querySelector(sel).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1 })), sel)
+await t('こぐはスイッチ式: 1回押すと進み続け、もう1回で止まる', async () => {
+  await ev(p, () => { IZ.dbg.noObs(); IZ.dbg.clearObs(); IZ.dbg.set({ x: 3, v: 0, dir: 1, heat: 0, th: 0, om: 0 }) })
+  await down(p, '#bFwd'); const r = await ev(p, () => { const x0 = IZ.S.x; IZ.dbg.step(60); const a = { x0, x1: IZ.S.x, on: IZ.S.inF, lit: document.querySelector('#bFwd').classList.contains('on') }; return a })
+  await down(p, '#bFwd'); const r2 = await ev(p, () => { IZ.dbg.step(240); return { on: IZ.S.inF, v: IZ.S.v } })
+  expect(r.x1 > r.x0 + 1.5 && r.on && r.lit && !r2.on && Math.abs(r2.v) < 0.1, JSON.stringify([r, r2])); return [r, r2] })
+await t('こぎっぱなしだと後ろへ傾き、離すと戻る。こぎ続けると後ろに転ぶ', async () => {
+  const r = await ev(p, () => {
+    IZ.dbg.clearObs(); IZ.dbg.set({ x: 2, v: 0, dir: 1, heat: 0, th: 0, om: 0, keyF: 1, falls: 0, fallWhy: [] }); IZ.dbg.step(120); const a = IZ.S.th
+    IZ.S.keyF = 0; IZ.dbg.step(90); const b = IZ.S.th
+    IZ.dbg.set({ x: 2, v: 0, heat: 0, th: 0, om: 0, keyF: 1 }); IZ.dbg.step(60 * 7); IZ.S.keyF = 0; const f = IZ.S.falls; IZ.dbg.step(130)
+    return { lean2s: a, after: b, falls: f, why: IZ.S.fallWhy }
+  })
+  expect(r.lean2s < -0.15 && r.after > -0.08 && r.falls === 1, JSON.stringify(r)); return r })
+await t('Uターン: 速いときは止まってから向きを変える', async () => {
+  const r = await ev(p, () => { IZ.dbg.set({ x: 10, v: 4, dir: 1, heat: 0, th: 0, om: 0 }); IZ.S.turnQ = 1; IZ.dbg.step(2); const mid = IZ.S.dir; IZ.dbg.step(60); return { mid, dir: IZ.S.dir, v: IZ.S.v, x: IZ.S.x } })
+  expect(r.mid === 1 && r.dir === -1 && Math.abs(r.v) < 0.1, JSON.stringify(r)); return r })
 await t('呼ばれた席で止まると注文が出て、一瞬で消える', async () => {
   const r = await ev(p, () => { IZ.dbg.noCalls(); IZ.dbg.noObs(); if (IZ.S.order) { IZ.S.order.t.st = 'idle'; IZ.S.order = null } let t = IZ.S.tables.find(t => t.st === 'call'); if (!t) { IZ.dbg.call(2); t = IZ.S.tables[2] } IZ.dbg.set({ x: t.x - 0.3, v: 0 }); IZ.dbg.step(3); const a = { order: IZ.S.order && IZ.S.order.list, bub: !!document.querySelector('#fx .sb.order') }; IZ.dbg.step(60 * 6); const after = !!document.querySelector('#fx .sb.order')
     IZ.dbg.set({ x: t.x + 4 }); IZ.dbg.step(3); IZ.dbg.set({ x: t.x - 0.2 }); IZ.dbg.step(3); const again = document.querySelector('#fx .sb.order'); IZ.dbg.step(60 * 4)
@@ -95,14 +111,25 @@ await t('違う物を運ぶと「頼んでない！」で注文間違い', async
 await t('傾くとグラスの中身が減る（こぼれる）', async () => { const r = await ev(p, () => { IZ.dbg.tray(['beer', 'beer', 'beer', 'beer', 'beer', 'beer']); IZ.dbg.set({ x: 20, v: 0, th: 0.35, om: 0 }); IZ.dbg.step(20); return IZ.S.tray.map(c => c.fill) }); expect(r.every(f => f < 1) && r.some(f => f < 0.95), JSON.stringify(r)); return r })
 await t('寝そべり客はジャンプで越えられる・ぶつかると減る', async () => {
   const r = await ev(p, () => {
-    IZ.dbg.clearObs(); IZ.dbg.tray(['beer', 'beer']); IZ.dbg.obs('sleep', 24); IZ.dbg.set({ x: 22.8, v: 3, th: 0, om: 0, dir: 1 }); IZ.S.keyF = 1; IZ.S.jumpQ = 0.1; IZ.dbg.step(50); IZ.S.keyF = 0
+    IZ.dbg.clearObs(); IZ.dbg.tray(['beer', 'beer']); IZ.dbg.obs('sleep', 24); IZ.dbg.set({ x: 22.6, v: 3, th: 0, om: 0, dir: 1, heat: 0 }); IZ.S.keyF = 1; IZ.S.jumpQ = 0.1; IZ.dbg.step(50); IZ.S.keyF = 0
     const a = { x: IZ.S.x, fill: IZ.S.tray.map(c => c.fill), falls: IZ.S.falls }
-    IZ.dbg.clearObs(); IZ.dbg.tray(['beer', 'beer']); IZ.dbg.obs('sleep', 31.5 - 4); IZ.dbg.set({ x: 25.8, v: 3, th: 0, om: 0, dir: 1, keyF: 1 }); IZ.dbg.step(40); IZ.S.keyF = 0
+    IZ.dbg.clearObs(); IZ.dbg.tray(['beer', 'beer']); IZ.dbg.obs('sleep', 27.5); IZ.dbg.set({ x: 25.8, v: 3, th: 0, om: 0, dir: 1, keyF: 1, heat: 0 }); IZ.dbg.step(40); IZ.S.keyF = 0
     return { a, b: { fill: IZ.S.tray.map(c => c.fill) } }
   })
   expect(r.a.x > 25 && r.a.fill.every(f => f > 0.9) && r.b.fill.some(f => f < 0.9), JSON.stringify(r)); return r })
+await t('寝そべり客は通路をまたいで寝ていて、体の真ん中が当たり判定の真ん中（6人とも）', async () => {
+  const r = await ev(p, () => { IZ.dbg.clearObs(); for (let k = 0; k < 6; k++) IZ.dbg.obs('sleep', 8 + k * 4); IZ.dbg.step(1); const o = IZ.S.obs.map((ob, i) => ob.kind === 'sleep' ? IZ.dbg.body(i) : null).filter(Boolean); IZ.dbg.clearObs(); return o })
+  const bad = r.filter(b => Math.abs((b.bx[0] + b.bx[1]) / 2 - b.x) > 0.05 || Math.abs(b.bz[0] + b.bz[1]) > 0.1 || b.bz[1] - b.bz[0] < 1.2 || b.by > 0.8)
+  expect(r.length === 6 && !bad.length, JSON.stringify(bad.length ? bad : r)); return r.map(b => +((b.bx[0] + b.bx[1]) / 2 - b.x).toFixed(3)) })
+await t('遅め（2.3m/s）でも寝そべり客をジャンプで越えられる', async () => {
+  const r = await ev(p, () => { IZ.dbg.clearObs(); IZ.dbg.tray(['beer']); IZ.dbg.obs('sleep', 14); const ob = IZ.S.obs.at(-1); IZ.dbg.set({ x: 14 - ob.w - 0.22 - 0.25, v: 2.3, dir: 1, th: 0, om: 0, heat: 0 }); IZ.S.jumpQ = 0.1; IZ.dbg.step(60); const hit = ob.hit; IZ.dbg.clearObs(); return { hit, x: IZ.S.x } })
+  expect(!r.hit && r.x > 14.7, JSON.stringify(r)); return r })
+await t('後ろの席から呼ばれると「うしろ」と出て、見取り図の席が赤くなる', async () => {
+  const r = await ev(p, () => { IZ.dbg.set({ x: 25, v: 0, dir: 1 }); const t = IZ.S.tables[1]; IZ.dbg.call(1); IZ.dbg.step(3); IZ.dbg.render(); window.dispatchEvent(new Event('resize')); return { bub: [...document.querySelectorAll('#fx .sb')].map(e => e.textContent).find(s => s.includes('2番')), map: document.querySelector('#mt1') && document.querySelector('#mt1').getAttribute('class') } })
+  await p.waitForTimeout(100); const m = await ev(p, () => document.querySelector('#mt1').getAttribute('class'))
+  expect(/うしろ/.test(r.bub || '') && /call/.test(m), JSON.stringify({ ...r, m })); await ev(p, () => { IZ.S.tables[1].st = 'idle' }); return { ...r, m } })
 await t('転倒: グラスは全部割れて減給、しばらくして起き上がる', async () => { const r = await ev(p, () => { IZ.dbg.tray(['beer', 'hb', 'hb']); const b0 = IZ.S.money.broken; IZ.dbg.fall(); const a = { broken: IZ.S.money.broken - b0, tray: IZ.S.tray.length, falls: IZ.S.falls }; IZ.dbg.step(130); return { ...a, up: IZ.S.fallT <= 0 } }); expect(r.broken === 3 && r.tray === 0 && r.falls >= 1 && r.up, JSON.stringify(r)); return r })
-await t('待たせすぎると客が帰る（1組で1回だけ数える）', async () => { const r = await ev(p, () => { const l0 = IZ.S.money.left; const t = IZ.S.tables[6]; t.st = 'call'; t.wait = 49.9; IZ.dbg.step(30); return { left: IZ.S.money.left - l0, st: t.st } }); expect(r.left === 1 && r.st === 'gone', JSON.stringify(r)); return r })
+await t('待たせすぎると客が帰る（1組で1回だけ数える）', async () => { const r = await ev(p, () => { IZ.dbg.set({ x: 2, v: 0, dir: 1 }); const l0 = IZ.S.money.left; const t = IZ.S.tables[6]; t.st = 'call'; t.wait = 49.9; IZ.dbg.step(30); return { left: IZ.S.money.left - l0, st: t.st } }); expect(r.left === 1 && r.st === 'gone', JSON.stringify(r)); return r })
 await t('音: BGM と効果音が呼ばれている（鳴らさず回数で）', async () => { const r = await ev(p, () => ({ calls: window.__soundCalls || 0, played: IZ.Snd.played })); expect(r.calls > 0 && r.played['call'] > 0 && r.played['crash'] > 0 && r.played['clink'] >= 0, JSON.stringify(r)); return r })
 await t('終業 → 給料明細（ハンコ・手取り・Xの本文）', async () => {
   await ev(p, () => { IZ.dbg.end(); IZ.dbg.step(200) }); await p.waitForTimeout(400); await ev(p, () => { IZ.dbg.reveal(); IZ.dbg.step(10) })
@@ -133,7 +160,7 @@ for (const [w, h, name] of SIZES) {
   views.play = await fit(q); await q.screenshot({ path: `${ROOT}/shots/fit-${name}-order.png` })
   await q.evaluate(() => { IZ.dbg.set({ x: 1.3, v: 0 }); IZ.dbg.step(10) }); for (let i = 0; i < 5; i++) await q.click('.dk[data-id=beer]')
   views.counter = await fit(q); await q.screenshot({ path: `${ROOT}/shots/fit-${name}-counter.png` })
-  await t(`カウンターの画面と操作ボタンが重ならない ${name}`, async () => { const r = await q.evaluate(() => { const a = document.querySelector('#counter').getBoundingClientRect(), o = []; for (const s of ['#bFwd', '#bBack', '#bJump', '#corner']) { const b = document.querySelector(s).getBoundingClientRect(); if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) o.push(s) } return o }); expect(!r.length, r.join()) })
+  await t(`カウンターの画面と操作ボタンが重ならない ${name}`, async () => { const r = await q.evaluate(() => { const a = document.querySelector('#counter').getBoundingClientRect(), o = []; for (const s of ['#bFwd', '#bBack', '#bJump', '#bTurn', '#corner']) { const b = document.querySelector(s).getBoundingClientRect(); if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) o.push(s) } return o }); expect(!r.length, r.join()) })
   await q.evaluate(() => { IZ.dbg.set({ x: 12, v: 4, dir: 1 }); IZ.dbg.obs('sleep', 15); IZ.dbg.step(40) }); await q.screenshot({ path: `${ROOT}/shots/fit-${name}-carry.png` })
   await q.evaluate(() => { IZ.dbg.end(); IZ.dbg.step(200) }); await q.waitForTimeout(400); await q.evaluate(() => { IZ.dbg.reveal(); IZ.dbg.step(5) })
   views.result = await fit(q); await q.screenshot({ path: `${ROOT}/shots/fit-${name}-result.png` })

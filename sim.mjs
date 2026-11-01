@@ -9,7 +9,7 @@ const b = await chromium.launch(MUTE_LAUNCH), ctx = await b.newContext({ viewpor
 const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message))
 await p.goto(`http://localhost:${PORT}/`); await p.waitForFunction(() => window.__izReady && IZ.charsReady, null, { timeout: 15000 })
 await p.addScriptTag({ path: 'bot.js' })
-for (const [name, o] of [['careful', { vcap: 3.2 }], ['normal', { vcap: 4.6 }], ['reckless', { vcap: 6.4 }], ['nojump', { vcap: 4, jump: false }], ['forgetful', { vcap: 3.5, wrong: 0.3 }]]) {
+for (const [name, o] of [['careful', { vcap: 3.2, heatMax: 1.0 }], ['normal', { vcap: 4.6 }], ['reckless', { vcap: 6.4, heatMax: 2.4 }], ['nolean', { vcap: 4.6, lean: false }], ['nojump', { vcap: 4, jump: false }], ['forgetful', { vcap: 3.5, wrong: 0.3 }]]) {
   for (const seed of (process.env.SEEDS || '1').split(',').map(Number)) {
     const r = await p.evaluate(([o, seed]) => { IZ.dbg.pause(true); IZ.dbg.start(seed); IZ.dbg.pause(true); IZ.S.tut = -1; IZBot.run(60 * 182, o); return { st: IZ.state(), net: IZ.calcResult().net, mode: IZ.S.mode } }, [o, seed])
     console.log(name, seed, 'served', r.st.served, 'falls', r.st.falls, (r.st.fallWhy||[]).join('/'), JSON.stringify(r.st.money), 'mode', r.mode, JSON.stringify(r.st.spillBy, (k, v) => typeof v === 'number' ? +v.toFixed(1) : v), 'net', r.net ?? JSON.stringify(r.st.result))

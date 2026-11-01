@@ -9,12 +9,12 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="1日だけ職場体験 居酒屋ホール">
 <meta property="og:description" content="なぜか一輪車で生ジョッキを運ぶ。注文は一回しか言われない。今日の手取りは給料明細で。">
-<meta property="og:image" content="https://tom3games.github.io/job-izakaya/og.png?v=1">
+<meta property="og:image" content="https://tom3games.github.io/job-izakaya/og.png?v=2">
 <meta property="og:url" content="https://tom3games.github.io/job-izakaya/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="1日だけ職場体験 居酒屋ホール">
 <meta name="twitter:description" content="なぜか一輪車で生ジョッキを運ぶ。注文は一回しか言われない。">
-<meta name="twitter:image" content="https://tom3games.github.io/job-izakaya/og.png?v=1">
+<meta name="twitter:image" content="https://tom3games.github.io/job-izakaya/og.png?v=2">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='14' y='14' width='30' height='40' rx='4' fill='%23f2a91a' stroke='%231d1a16' stroke-width='4'/%3E%3Cpath d='M44 24h6a5 5 0 0 1 5 5v8a5 5 0 0 1-5 5h-6' fill='none' stroke='%231d1a16' stroke-width='4'/%3E%3Cpath d='M12 18c0-8 34-8 34 0v4H12z' fill='%23fff' stroke='%231d1a16' stroke-width='4'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -91,13 +91,29 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
 #finger{position:absolute;left:0;top:0;width:54px;height:54px;pointer-events:none;filter:drop-shadow(0 3px 0 rgba(0,0,0,.35));z-index:4;animation:tapf .8s ease-in-out infinite}
 @keyframes tapf{50%{translate:0 8px}}
 #finger svg{width:100%;height:100%}
-.ctl{position:absolute;bottom:max(14px,calc(env(safe-area-inset-bottom) + 8px));display:flex;gap:12px;pointer-events:auto}
+.ctl{position:absolute;bottom:max(14px,calc(env(safe-area-inset-bottom) + 8px));display:flex;gap:10px;align-items:flex-end;pointer-events:auto}
 #ctlL{left:max(14px,env(safe-area-inset-left))}
 #ctlR{right:max(14px,env(safe-area-inset-right))}
 .pad{width:76px;height:76px;border-radius:50%;border:3px solid var(--ink);background:rgba(251,246,234,.92);color:var(--ink);box-shadow:0 5px 0 var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:none}
-.pad svg{width:38px;height:38px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.pad{flex-direction:column;gap:0;font-weight:900;font-size:12px;line-height:1.1}
+.pad svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
 .pad.on{transform:translateY(4px);box-shadow:0 1px 0 var(--ink);background:var(--yel)}
-.pad.jump{width:92px;height:92px;background:var(--red);color:#fff;flex-direction:column;gap:0;font-weight:900;font-size:13px}
+.pad.pedal.on{box-shadow:0 1px 0 var(--ink),0 0 0 4px rgba(233,180,76,.45);animation:pedal .5s linear infinite}
+.pad.pedal.on svg{animation:spin .5s linear infinite}
+.pad.pedal.hot{background:#ff7a5c;animation:shake .12s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shake{50%{translate:2px 0}}
+#map{flex:1 1 auto;max-width:220px;min-width:120px;height:36px}
+#map svg{display:block;width:100%;height:100%}
+#map .mBg{fill:rgba(29,26,22,.74);stroke:rgba(255,250,240,.45);stroke-width:1.5}
+#map .mCt{fill:#e9b44c}
+#map .mT circle{fill:#5a4a3e;stroke:#1d1a16;stroke-width:1}
+#map .mT text{font:900 8px 'Zen Maru Gothic',sans-serif;fill:#fbf6ea;text-anchor:middle}
+#map .mT.call circle{fill:#c8372d;stroke:#fff;stroke-width:1.4}
+#map .mT.mine circle{fill:#e9b44c}#map .mT.mine text{fill:#1d1a16}
+#map .mT.gone{opacity:.3}
+#map .mMe{fill:#fff;stroke:#1d1a16;stroke-width:1}
+.pad.jump{width:84px;height:84px;background:var(--red);color:#fff;font-size:13px}
 .pad.jump svg{width:34px;height:34px}
 /* カウンター（トレーにのせる） */
 #counter{position:absolute;left:50%;top:calc(max(8px,env(safe-area-inset-top)) + 52px);transform:translateX(-50%);width:min(560px,calc(100% - 20px));background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:16px;box-shadow:0 5px 0 var(--ink);padding:8px;pointer-events:auto;animation:popIn .18s cubic-bezier(.3,1.4,.5,1)}
@@ -154,7 +170,7 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
   .bubble{font-size:13px;padding:7px 10px;line-height:1.45}
   .btn{min-height:48px;font-size:16px}.btn.red{min-height:54px;font-size:19px}
   .step{font-size:13px}.step svg{width:40px;height:40px}
-  .pad{width:66px;height:66px}.pad.jump{width:80px;height:80px}
+  .pad{width:64px;height:64px;font-size:11px}.pad svg{width:26px;height:26px}.pad.jump{width:72px;height:72px}
   .res .row .btn{min-height:44px;font-size:15px}
   .dk{min-height:52px}
 }
@@ -173,7 +189,7 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
   .resSide{flex:0 0 auto;width:min(320px,44%);min-width:0}
   .res .row .btn{font-size:14px;gap:6px;padding:0 8px;min-height:44px}
   .res .row .btn svg{width:18px;height:18px}
-  .pad{width:60px;height:60px}.pad.jump{width:72px;height:72px}
+  .pad{width:58px;height:58px;font-size:10.5px}.pad svg{width:24px;height:24px}.pad.jump{width:66px;height:66px}
   #counter{top:max(6px,env(safe-area-inset-top));width:min(520px,calc(100% - 300px));padding:6px}
   #counter h3{margin-bottom:4px}
   .dk{min-height:42px;flex-direction:row;font-size:11px}.dk svg{width:22px;height:22px}
@@ -224,6 +240,7 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
 <main id="vPlay" class="view" hidden>
   <div class="hudTop">
     <div class="stChip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><b id="hClock">17:00</b></div>
+    <div id="map" aria-hidden="true"></div>
   </div>
   <div id="counter" hidden>
     <h3><span data-t="counterT"></span><b id="trayN"></b></h3>
@@ -232,10 +249,11 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
   <div class="hint" id="hint" hidden></div>
   <div id="finger" hidden><svg viewBox="0 0 48 48"><path d="M18 26V9a3 3 0 0 1 6 0v12l9 2c3 .7 4.5 3 4 6l-2 10c-.4 2-2 3-4 3H22c-1.6 0-3-.8-3.8-2.2L12 29c-1-1.8.6-4 2.6-3.3z" fill="#fff" stroke="#1d1a16" stroke-width="2.6" stroke-linejoin="round"/></svg></div>
   <div class="ctl" id="ctlL">
-    <button class="pad" id="bBack" type="button" aria-label="back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
-    <button class="pad" id="bFwd" type="button" aria-label="forward"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    <button class="pad" id="bTurn" type="button" aria-label="U-turn"><svg viewBox="0 0 24 24"><path d="M8 20V10a5 5 0 0 1 10 0v4"/><path d="M14 11l4 4 4-4"/></svg><span data-t="turn"></span></button>
+    <button class="pad" id="bBack" type="button" aria-label="brake"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span data-t="brake"></span></button>
   </div>
   <div class="ctl" id="ctlR">
+    <button class="pad pedal" id="bFwd" type="button" aria-label="pedal"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6"/><path d="M12 12l4.5-4.5M14.5 5.5h4"/></svg><span data-t="pedal"></span></button>
     <button class="pad jump" id="bJump" type="button"><svg viewBox="0 0 24 24"><path d="M5 14l7-7 7 7"/><path d="M5 19h14"/></svg><span data-t="jump"></span></button>
   </div>
 </main>
@@ -281,7 +299,7 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
   },7000);
 })();
 </script>
-<script src="data.js?v=3"></script>
-<script type="module" src="game.js?v=3"></script>
+<script src="data.js?v=4"></script>
+<script type="module" src="game.js?v=4"></script>
 </body>
 </html>

@@ -20,19 +20,21 @@ const store = { get(k) { try { return localStorage.getItem('iz.' + k) } catch (e
 const DK = Object.fromEntries(D.DRINKS.map(d => [d.id, d]))
 
 // ---------- 寸法（世界の単位）
-const NT = 10, TX = i => 9 + i * 8.6, LEN = TX(NT - 1) + 4.5
-const ZA_Y = 0.36, ZA_Z = -2.75
+// 通路は x 方向にまっすぐ奥へ。席は通路の左右（z の負と正）に互い違い
+const NT = 10, TX = i => 7 + i * 3.2, SIDE = i => (i % 2 ? 1 : -1), LEN = TX(NT - 1) + 4
+const ZA_Y = 0.36, ZA_Z = 2.75, AISLE = 1.4, WALL_Z = 5
+const W0 = -3.2, W1 = LEN + 3
 const CH = 1.5                     // 人の背丈
 const WR = 0.42, SEAT = 1.25       // 一輪車の車輪の半径・サドルの高さ
-const VMAX = 6.4, ACC = 6.5, BRAKE = 8.5, DRAG = 4
-const THRESH = [31, 57]            // 段差（敷居）の位置
+const VMAX = 6.4, ACC = 6.5, BRAKE = 9, DRAG = 2.4
+const THRESH = [TX(4) + 1.6]       // 段差（敷居）の位置
 const COUNTER_X = 2.0
 
 // ---------- 状態
 const S = {
   lang: store.get('lang') || ((navigator.language || 'ja').toLowerCase().startsWith('ja') ? 'ja' : 'en'),
   mode: 'title', time: 0, rand: Math.random, dbgPause: false,
-  t: 0, x: 1.2, v: 0, acc: 0, y: 0, vy: 0, dir: 1, face: Math.PI / 2, th: 0, om: 0, wheelA: 0,
+  t: 0, x: 1.2, v: 0, acc: 0, y: 0, vy: 0, dir: 1, face: Math.PI / 2, th: 0, om: 0, wheelA: 0, heat: 0, turnQ: 0, turns: 0, roll: 0,
   inF: 0, inB: 0, keyF: 0, keyB: 0, jumpQ: 0, fallT: 0, falls: 0,
   tray: [], order: null, tables: [], obs: [], drops: [], puddles: [],
   money: { cups: 0, wrong: 0, spill: 0, broken: 0, left: 0 },
@@ -160,11 +162,11 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.6 : 2))
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x2a1a14)
-scene.fog = new THREE.Fog(0x2a1a14, 26, 60)
-const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 120)
+scene.fog = new THREE.Fog(0x2a1a14, 16, 48)
+const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 120)
 const lk = setupLook(renderer, scene, { env: true, envIntensity: 0.45, exposure: 1.08, sun: 1.6, sunPos: [3, 9, 6], hemi: 0.75, sky: 0xffe2b8, ground: 0x4a3024, sunColor: 0xffe0b0 })
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap
-{ const sun = lk.sun; sun.castShadow = true; const sz = isTouch ? 1024 : 2048; sun.shadow.mapSize.set(sz, sz); const c = sun.shadow.camera; c.left = -9; c.right = 9; c.top = 7; c.bottom = -7; c.near = 1; c.far = 40; c.updateProjectionMatrix(); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03 }
+{ const sun = lk.sun; sun.castShadow = true; const sz = isTouch ? 1024 : 2048; sun.shadow.mapSize.set(sz, sz); const c = sun.shadow.camera; c.left = -13; c.right = 13; c.top = 11; c.bottom = -11; c.near = 1; c.far = 45; c.updateProjectionMatrix(); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03 }
 const SUN_OFF = new THREE.Vector3(4, 12, 8)
 const fx = createFx(scene, camera, renderer)
 const std = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0, ...o })
@@ -177,34 +179,18 @@ function canvasTex(w, h, draw, o = {}) {
 }
 const FONT = '"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif'
 
-// ---------- 店（横に長い）
+// ---------- 店（奥に長い通路。左右に座敷）
 const world = new THREE.Group(); scene.add(world)
-const lanterns = []
+const lanterns = [], plates = []
 {
-  const W0 = -7, W1 = LEN + 3, WL = W1 - W0, WC = (W0 + W1) / 2
+  const WL = W1 - W0, WC = (W0 + W1) / 2, WD = WALL_Z * 2
   // 床（板張り）
-  const ft = surfaceTex({ w: 512, h: 512, base: '#7a5236', noise: 0.05, grime: 0.08, repeat: [WL / 4, 2], draw: (x, w, h) => { x.strokeStyle = 'rgba(40,22,10,.55)'; x.lineWidth = 3; for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(0, i * h / 4); x.lineTo(w, i * h / 4); x.stroke() } for (let i = 0; i < 4; i++) { const o = (i % 2) * w / 2; x.beginPath(); x.moveTo(o + w / 4, i * h / 4); x.lineTo(o + w / 4, (i + 1) * h / 4); x.stroke() } x.strokeStyle = 'rgba(255,220,170,.06)'; x.lineWidth = 1; for (let i = 0; i < 40; i++) { const y = Math.random() * h; x.beginPath(); x.moveTo(0, y); x.bezierCurveTo(w / 3, y + 4, w * 2 / 3, y - 4, w, y); x.stroke() } } })
-  const floor = mesh(new THREE.PlaneGeometry(WL, 9), std(0xffffff, { map: ft, roughness: 0.45 }), WC, 0, 0.5, world); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true
-  // 座敷（畳の段）
+  const ft = surfaceTex({ w: 512, h: 512, base: '#7a5236', noise: 0.05, grime: 0.08, repeat: [WL / 4, WD / 4], draw: (x, w, h) => { x.strokeStyle = 'rgba(40,22,10,.55)'; x.lineWidth = 3; for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(0, i * h / 4); x.lineTo(w, i * h / 4); x.stroke() } for (let i = 0; i < 4; i++) { const o = (i % 2) * w / 2; x.beginPath(); x.moveTo(o + w / 4, i * h / 4); x.lineTo(o + w / 4, (i + 1) * h / 4); x.stroke() } x.strokeStyle = 'rgba(255,220,170,.06)'; x.lineWidth = 1; for (let i = 0; i < 40; i++) { const y = Math.random() * h; x.beginPath(); x.moveTo(0, y); x.bezierCurveTo(w / 3, y + 4, w * 2 / 3, y - 4, w, y); x.stroke() } } })
+  const floor = mesh(new THREE.PlaneGeometry(WL, WD), std(0xffffff, { map: ft, roughness: 0.45 }), WC, 0, 0, world); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true
   const tt = surfaceTex({ w: 256, h: 256, base: '#b8b06a', noise: 0.05, grime: 0.06, repeat: [WL / 1.8, 2], draw: (x, w, h) => { x.strokeStyle = 'rgba(80,80,30,.25)'; x.lineWidth = 1; for (let i = 0; i < w; i += 4) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, h); x.stroke() } x.fillStyle = '#2d3a26'; x.fillRect(0, 0, w, 10); x.fillRect(0, h - 10, w, 10) } })
-  const za0 = 4.2
-  const za = mesh(new THREE.BoxGeometry(LEN - za0 + 3, ZA_Y, 3.6), [std(0x5a3a22), std(0x5a3a22), std(0xffffff, { map: tt, roughness: 0.8 }), std(0x5a3a22), std(0x6b4428, { roughness: 0.5 }), std(0x5a3a22)], (za0 + LEN + 3) / 2, ZA_Y / 2, -3.2, world)
-  za.receiveShadow = true; za.castShadow = false
-  // 框（座敷の縁の黒い木）
-  mesh(new THREE.BoxGeometry(LEN - za0 + 3, 0.08, 0.14), std(0x2a1a10, { roughness: 0.35 }), (za0 + LEN + 3) / 2, ZA_Y + 0.02, -1.42, world)
-  // 奥の壁（板と漆喰）
   const wt = surfaceTex({ w: 512, h: 256, base: '#e9dcc0', noise: 0.03, grime: 0.12, repeat: [WL / 6, 1] })
-  mesh(new THREE.PlaneGeometry(WL, 7), std(0xffffff, { map: wt }), WC, 3.5, -5.0, world)
   const wood = std(0x4a2e1a, { roughness: 0.55 }), woodD = std(0x2e1c10, { roughness: 0.5 })
-  mesh(new THREE.BoxGeometry(WL, 1.1, 0.06), wood, WC, 0.9, -4.96, world)
-  mesh(new THREE.BoxGeometry(WL, 0.12, 0.1), woodD, WC, 3.9, -4.94, world)
-  // 柱と衝立（席ごとの仕切り）
-  for (let i = 0; i <= NT; i++) {
-    const x = TX(i) - 4.3
-    if (x < za0) continue
-    mesh(new THREE.BoxGeometry(0.22, 7, 0.22), woodD, x, 3.5, -4.85, world)
-    const sc = mesh(new THREE.BoxGeometry(0.08, 1.0, 2.6), std(0x6b4428, { roughness: 0.5 }), x, ZA_Y + 0.5, -3.2, world); sc.castShadow = true
-  }
+  const za0 = 4.2, zaL = W1 - za0, zaC = (za0 + W1) / 2, zaD = WALL_Z - AISLE
   // 品書きの短冊（店名・銘柄は出さない）
   const menus = ['生ビール', 'ハイボール', 'レモンサワー', '枝豆', '唐揚げ', '焼き鳥', 'だし巻き', 'ウーロンハイ', '冷奴', 'もつ煮', 'ポテト', 'お茶漬け', 'たこわさ', '刺身盛り']
   const mt = canvasTex(1024, 256, (x, w, h) => {
@@ -215,66 +201,85 @@ const lanterns = []
       const s = menus[i]; for (let k = 0; k < Math.min(s.length, 6); k++) x.fillText(s[k], i * sw + sw / 2, 8 + k * sw * 0.62)
       x.fillStyle = '#b5281c'; x.font = `900 ${sw * 0.32}px ${FONT}`; x.fillText(['380', '420', '400', '300', '480', '150', '420', '400', '300', '450', '350', '500', '380', '880'][i], i * sw + sw / 2, h - sw * 0.45)
     }
-  }, { rep: [1, 1] })
-  mt.wrapS = THREE.RepeatWrapping; mt.repeat.set(1, 1)
-  for (let x0 = 6; x0 < LEN; x0 += 14) { const p = mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshStandardMaterial({ map: mt, roughness: 0.9 }), x0 + 3, 2.6, -4.9, world) }
-  // 提灯（手前の通路の上。奥行きの手前側）
-  const lanMat = new THREE.MeshStandardMaterial({ color: 0xd8382a, emissive: 0xff4a2a, emissiveIntensity: 0.55, roughness: 0.6 })
-  const capMat = std(0x1a1008)
-  const lanTex = canvasTex(256, 128, (x, w, h) => { x.fillStyle = '#d8382a'; x.fillRect(0, 0, w, h); x.strokeStyle = 'rgba(80,10,5,.45)'; x.lineWidth = 3; for (let i = 0; i < h; i += 10) { x.beginPath(); x.moveTo(0, i); x.lineTo(w, i); x.stroke() } x.fillStyle = '#1a0a05'; x.font = `900 70px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('酒', w * 0.25, h / 2); x.fillText('酒', w * 0.75, h / 2) })
-  lanMat.map = lanTex; lanMat.emissiveMap = lanTex
-  for (let x0 = 3; x0 < LEN; x0 += 6.5) {
-    const g = new THREE.Group(); g.position.set(x0, 3.55, -0.6); world.add(g)
-    const b = mesh(new THREE.SphereGeometry(0.34, 20, 14), lanMat, 0, 0, 0, g); b.scale.y = 1.35
-    mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 16), capMat, 0, 0.46, 0, g); mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 16), capMat, 0, -0.46, 0, g)
-    mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.4, 4), capMat, 0, 1.2, 0, g)
-    lanterns.push(g)
+  })
+  const menuMat = new THREE.MeshStandardMaterial({ map: mt, roughness: 0.9 })
+  for (const s of [-1, 1]) {
+    const face = s < 0 ? 0 : Math.PI
+    // 座敷（畳の段）。通路に向いた面は濃い木
+    const za = mesh(new THREE.BoxGeometry(zaL, ZA_Y, zaD), [std(0x5a3a22), std(0x5a3a22), std(0xffffff, { map: tt, roughness: 0.8 }), std(0x5a3a22), std(0x6b4428, { roughness: 0.5 }), std(0x6b4428, { roughness: 0.5 })], zaC, ZA_Y / 2, s * (AISLE + zaD / 2), world)
+    za.receiveShadow = true
+    mesh(new THREE.BoxGeometry(zaL, 0.08, 0.14), std(0x2a1a10, { roughness: 0.35 }), zaC, ZA_Y + 0.02, s * (AISLE - 0.02), world)
+    // 壁（漆喰と腰板）
+    mesh(new THREE.PlaneGeometry(WL, 4.4), std(0xffffff, { map: wt }), WC, 2.2, s * WALL_Z, world).rotation.y = face
+    mesh(new THREE.BoxGeometry(WL, 1.1, 0.06), wood, WC, 0.9, s * (WALL_Z - 0.04), world)
+    mesh(new THREE.BoxGeometry(WL, 0.12, 0.1), woodD, WC, 3.5, s * (WALL_Z - 0.06), world)
+    for (let x0 = 6 + (s > 0 ? 6 : 0); x0 < LEN; x0 += 12) mesh(new THREE.PlaneGeometry(8, 1.7), menuMat, x0 + 3, 2.6, s * (WALL_Z - 0.05), world).rotation.y = face
+    // 同じ側の席の間に、柱と低い衝立（客の顔は隠さない高さ）
+    for (let x = TX(s < 0 ? 0 : 1) - 3.2; x < LEN + 1; x += 6.4) {
+      if (x < za0) continue
+      mesh(new THREE.BoxGeometry(0.22, 4.4, 0.22), woodD, x, 2.2, s * (WALL_Z - 0.12), world)
+      const sc = mesh(new THREE.BoxGeometry(0.08, 0.55, 1.5), std(0x6b4428, { roughness: 0.5 }), x, ZA_Y + 0.28, s * 4.15, world); sc.castShadow = true
+    }
+    // 提灯（通路の両脇の上）
+    const lanMat = lanterns.mat || (lanterns.mat = new THREE.MeshStandardMaterial({ color: 0xd8382a, emissive: 0xff4a2a, emissiveIntensity: 0.55, roughness: 0.6 }))
+    if (!lanMat.map) { const lanTex = canvasTex(256, 128, (x, w, h) => { x.fillStyle = '#d8382a'; x.fillRect(0, 0, w, h); x.strokeStyle = 'rgba(80,10,5,.45)'; x.lineWidth = 3; for (let i = 0; i < h; i += 10) { x.beginPath(); x.moveTo(0, i); x.lineTo(w, i); x.stroke() } x.fillStyle = '#1a0a05'; x.font = `900 70px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('酒', w * 0.25, h / 2); x.fillText('酒', w * 0.75, h / 2) }); lanMat.map = lanTex; lanMat.emissiveMap = lanTex }
+    const capMat = std(0x1a1008)
+    for (let x0 = 3 + (s > 0 ? 2.5 : 0); x0 < LEN; x0 += 5) {
+      const g = new THREE.Group(); g.position.set(x0, 3.45, s * 1.25); world.add(g)
+      const b = mesh(new THREE.SphereGeometry(0.3, 20, 14), lanMat, 0, 0, 0, g); b.scale.y = 1.35
+      mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 16), capMat, 0, 0.41, 0, g); mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 16), capMat, 0, -0.41, 0, g)
+      mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 4), capMat, 0, 0.9, 0, g)
+      lanterns.push(g)
+    }
   }
-  // 暖かい点光源（少しだけ）
-  for (let x0 = 10; x0 < LEN; x0 += 26) { const pl = new THREE.PointLight(0xffa860, 7, 14, 1.6); pl.position.set(x0, 3.2, -1); world.add(pl) }
-  // カウンター（左端）
+  // 天井と梁
+  const ceil = mesh(new THREE.PlaneGeometry(WL, WD), std(0x2a1a10, { roughness: 0.8 }), WC, 4.4, 0, world); ceil.rotation.x = Math.PI / 2
+  for (let x = 0; x < W1; x += 3.2) mesh(new THREE.BoxGeometry(0.2, 0.22, WD), woodD, x, 4.28, 0, world)
+  // 突き当たり（奥）と、カウンターの後ろの壁
+  mesh(new THREE.PlaneGeometry(WD, 4.4), std(0xffffff, { map: wt }), W1, 2.2, 0, world).rotation.y = -Math.PI / 2
+  mesh(new THREE.PlaneGeometry(WD, 4.4), std(0xffffff, { map: wt }), W0, 2.2, 0, world).rotation.y = Math.PI / 2
+  // 奥のお手洗いの扉とのれん
+  mesh(new THREE.BoxGeometry(0.1, 2.3, 1.4), std(0x3a2414, { roughness: 0.5 }), W1 - 0.05, 1.15, 0, world)
+  const wc = canvasTex(256, 128, (x, w, h) => { x.fillStyle = '#1f2f55'; x.fillRect(0, 0, w, h); x.fillStyle = '#f4ecd8'; x.font = `900 64px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('お手洗い', w / 2, h / 2 + 4) })
+  mesh(new THREE.PlaneGeometry(1.6, 0.8), new THREE.MeshStandardMaterial({ map: wc, roughness: 0.9 }), W1 - 0.12, 2.75, 0, world).rotation.y = -Math.PI / 2
+  // 暖かい点光源
+  for (let x0 = 5; x0 < LEN; x0 += 10) { const pl = new THREE.PointLight(0xffa860, 9, 16, 1.6); pl.position.set(x0, 3.4, 0); world.add(pl) }
+  // カウンター（手前の端。通路をふさぐ向き）
   const cg = new THREE.Group(); world.add(cg)
   const ctop = std(0x9a6a3e, { roughness: 0.35 })
-  mesh(new THREE.BoxGeometry(5.6, 0.12, 1.3), ctop, -2.6, 1.1, -2.2, cg)
-  mesh(new THREE.BoxGeometry(5.6, 1.06, 0.1), wood, -2.6, 0.53, -1.6, cg)
-  mesh(new THREE.BoxGeometry(0.1, 1.06, 1.3), wood, 0.2, 0.53, -2.2, cg)
-  // ビールサーバー（無地）
+  mesh(new THREE.BoxGeometry(1.1, 0.12, 6.4), ctop, -0.45, 1.1, 0, cg)
+  mesh(new THREE.BoxGeometry(0.1, 1.06, 6.4), wood, 0.1, 0.53, 0, cg)
   const srv = std(0xc7ccd1, { roughness: 0.25, metalness: 0.8 })
-  mesh(new THREE.BoxGeometry(0.7, 0.9, 0.6), srv, -0.7, 1.6, -2.4, cg)
-  mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 8), std(0x222222), -0.85, 2.15, -2.15, cg)
-  mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 8), std(0x222222), -0.55, 2.15, -2.15, cg)
-  // 酒の棚（ラベル無しの瓶）
-  mesh(new THREE.BoxGeometry(5.6, 0.08, 0.5), wood, -2.6, 2.7, -4.7, cg); mesh(new THREE.BoxGeometry(5.6, 0.08, 0.5), wood, -2.6, 3.5, -4.7, cg)
+  mesh(new THREE.BoxGeometry(0.6, 0.9, 0.7), srv, -0.7, 1.6, 1.4, cg)
+  mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 8), std(0x222222), -0.4, 2.15, 1.25, cg)
+  mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.35, 8), std(0x222222), -0.4, 2.15, 1.55, cg)
+  mesh(new THREE.BoxGeometry(0.5, 0.08, 4.2), wood, -2.9, 2.7, -0.9, cg); mesh(new THREE.BoxGeometry(0.5, 0.08, 4.2), wood, -2.9, 3.5, -0.9, cg)
   const bc = [0x2f5d3a, 0x6b3a1a, 0x1f3550, 0x8a7a3a, 0x4a1a1a]
-  for (let i = 0; i < 18; i++) { const r = 0.09 + (i % 3) * 0.02; const b = mesh(new THREE.CylinderGeometry(r, r, 0.55, 10), std(bc[i % 5], { roughness: 0.2, metalness: 0.1 }), -5.1 + (i % 9) * 0.6, 3.05 + Math.floor(i / 9) * 0.8, -4.65, cg) }
-  // 厨房ののれん
+  for (let i = 0; i < 18; i++) { const r = 0.09 + (i % 3) * 0.02; mesh(new THREE.CylinderGeometry(r, r, 0.55, 10), std(bc[i % 5], { roughness: 0.2, metalness: 0.1 }), -2.85, 3.05 + Math.floor(i / 9) * 0.8, -2.7 + (i % 9) * 0.45, cg) }
   const nt = canvasTex(512, 256, (x, w, h) => { x.fillStyle = '#1f2f55'; x.fillRect(0, 0, w, h); x.fillStyle = 'rgba(0,0,0,.25)'; for (let i = 1; i < 4; i++) x.fillRect(i * w / 4 - 3, 0, 6, h); x.fillStyle = '#f4ecd8'; x.font = `900 120px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('厨', w * 0.25, h * 0.45); x.fillText('房', w * 0.75, h * 0.45) })
-  const noren = mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshStandardMaterial({ map: nt, side: THREE.DoubleSide, roughness: 0.9 }), -4.6, 3.1, -4.97, cg)
+  mesh(new THREE.PlaneGeometry(2.0, 1.2), new THREE.MeshStandardMaterial({ map: nt, side: THREE.DoubleSide, roughness: 0.9 }), W0 + 0.05, 3.0, 2.4, cg).rotation.y = Math.PI / 2
   castShadow(cg)
-  // 段差（敷居）と仕切りののれん
+  // 段差（敷居）と仕切りののれん（通路をまたぐ）
   const nt2 = canvasTex(512, 256, (x, w, h) => { x.fillStyle = '#8c2a1e'; x.fillRect(0, 0, w, h); x.fillStyle = 'rgba(0,0,0,.25)'; for (let i = 1; i < 3; i++) x.fillRect(i * w / 3 - 3, 0, 6, h); x.fillStyle = '#f4ecd8'; x.font = `900 110px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('奥', w / 6, h * 0.45); x.fillText('座', w / 2, h * 0.45); x.fillText('敷', w * 5 / 6, h * 0.45) })
   for (const x0 of THRESH) {
-    const s = mesh(new THREE.BoxGeometry(0.34, 0.2, 2.0), std(0x3a2414, { roughness: 0.4 }), x0, 0.1, 0, world); s.castShadow = true; s.receiveShadow = true
-    // のれん（3枚。通ると揺れる）
-    const ng = new THREE.Group(); ng.position.set(x0, 3.75, 0); world.add(ng); ng.userData.flap = 0
-    for (let k = 0; k < 3; k++) { const p = mesh(new THREE.PlaneGeometry(0.62, 1.0), new THREE.MeshStandardMaterial({ map: nt2, side: THREE.DoubleSide, roughness: 0.9 }), 0, -0.5, (k - 1) * 0.66, ng); p.rotation.y = Math.PI / 2; p.geometry.translate(0, 0, 0); const uv = p.geometry.attributes.uv; for (let j = 0; j < uv.count; j++) uv.setX(j, (uv.getX(j) + k) / 3); p.userData.k = k }
-    mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 6), woodD, 0, 0.02, 0, ng).rotation.x = Math.PI / 2
+    const s = mesh(new THREE.BoxGeometry(0.34, 0.2, AISLE * 2), std(0x3a2414, { roughness: 0.4 }), x0, 0.1, 0, world); s.castShadow = true; s.receiveShadow = true
+    const ng = new THREE.Group(); ng.position.set(x0, 4.25, 0); world.add(ng); ng.userData.flap = 0
+    for (let k = 0; k < 3; k++) { const p = mesh(new THREE.PlaneGeometry(0.9, 0.85), new THREE.MeshStandardMaterial({ map: nt2, side: THREE.DoubleSide, roughness: 0.9 }), 0, -0.43, (k - 1) * 0.94, ng); p.rotation.y = Math.PI / 2; const uv = p.geometry.attributes.uv; for (let j = 0; j < uv.count; j++) uv.setX(j, (uv.getX(j) + k) / 3); p.userData.k = k }
+    mesh(new THREE.CylinderGeometry(0.03, 0.03, AISLE * 2.2, 6), woodD, 0, 0.02, 0, ng).rotation.x = Math.PI / 2
     lanterns.push(ng); ng.userData.noren = true
   }
-  // 低いテーブル（各席）と料理
+  // 低いテーブル（各席）と料理、卓番の札（宙に浮かせて、遠くからでも読める）
   const tbl = std(0x5c3a20, { roughness: 0.35 })
   const plateM = std(0xf2efe6, { roughness: 0.3 }), foodC = [0xc8762a, 0x6aa84f, 0xe8d06a, 0x9a3a2a]
   for (let i = 0; i < NT; i++) {
-    const x = TX(i), g = new THREE.Group(); g.position.set(x, ZA_Y, ZA_Z); world.add(g)
+    const x = TX(i), s = SIDE(i), g = new THREE.Group(); g.position.set(x, ZA_Y, s * ZA_Z); world.add(g)
     mesh(new THREE.BoxGeometry(1.7, 0.09, 1.0), tbl, 0, 0.42, 0, g)
     for (const [a, b] of [[-0.75, -0.42], [0.75, -0.42], [-0.75, 0.42], [0.75, 0.42]]) mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), tbl, a, 0.2, b, g)
     for (let k = 0; k < 3; k++) { mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.04, 18), plateM, -0.5 + k * 0.5, 0.49, (k % 2) * 0.2 - 0.1, g); mesh(new THREE.SphereGeometry(0.12, 10, 8), std(foodC[(i + k) % 4], { roughness: 0.7 }), -0.5 + k * 0.5, 0.53, (k % 2) * 0.2 - 0.1, g).scale.y = 0.5 }
-    // 座布団
-    for (const [a, b] of [[-1.15, 0], [1.15, 0], [0, -0.85]]) mesh(new THREE.BoxGeometry(0.62, 0.07, 0.62), std(0x7a2a3a, { roughness: 0.9 }), a, 0.035, b, g)
-    // 卓番の札
-    const nt3 = canvasTex(128, 128, (c, w, h) => { c.fillStyle = '#fbf3dc'; c.fillRect(0, 0, w, h); c.strokeStyle = '#2a1a10'; c.lineWidth = 8; c.strokeRect(4, 4, w - 8, h - 8); c.fillStyle = '#2a1a10'; c.font = `900 84px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(i + 1), w / 2, h / 2 + 4) })
-    mesh(new THREE.PlaneGeometry(0.5, 0.5), new THREE.MeshStandardMaterial({ map: nt3, roughness: 0.9 }), 0, 2.2, -2.2, g)
+    for (const [a, b] of [[-1.15, 0], [1.15, 0], [0, s * 0.85]]) mesh(new THREE.BoxGeometry(0.62, 0.07, 0.62), std(0x7a2a3a, { roughness: 0.9 }), a, 0.035, b, g)
     castShadow(g)
+    const mk = hot => new THREE.SpriteMaterial({ map: canvasTex(128, 128, (c, w, h) => { c.fillStyle = hot ? '#c8372d' : '#fbf3dc'; c.beginPath(); c.roundRect(6, 6, w - 12, h - 12, 22); c.fill(); c.strokeStyle = '#2a1a10'; c.lineWidth = 8; c.stroke(); c.fillStyle = hot ? '#fff' : '#2a1a10'; c.font = `900 80px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(i + 1), w / 2, h / 2 + 5) }), toneMapped: false })
+    const sp = new THREE.Sprite(mk(false)); sp.userData = { cold: sp.material, hot: mk(true), y: 2.5 }; sp.position.set(x, 2.5, s * (ZA_Z + 0.3)); sp.scale.setScalar(0.5); world.add(sp); plates.push(sp)
   }
 }
 
@@ -328,11 +333,11 @@ scene.add(P.g); P.g.add(P.body)
   // ペダル
   P.ped = new THREE.Group(); P.ped.position.y = WR; P.body.add(P.ped)
   mesh(new THREE.BoxGeometry(0.03, 0.03, 0.42), rim, 0, 0, 0, P.ped)
-  P.tray.position.set(0.5, SEAT + 0.62, 0.05); P.tray.scale.setScalar(1.25)
+  P.tray.position.set(0.1, SEAT + 0.5, 0.5); P.tray.scale.setScalar(1.0)
   P.body.add(P.tray)
-  const tr = mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 36), std(0x3a2a1e, { roughness: 0.3, metalness: 0.2 }), 0, 0, 0, P.tray); tr.scale.z = 0.75
+  const tr = mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 36), std(0x3a2a1e, { roughness: 0.3, metalness: 0.2 }), 0, 0, 0, P.tray); tr.scale.x = 0.75
   mesh(new THREE.TorusGeometry(0.62, 0.025, 6, 36), std(0x2a1d14, { roughness: 0.3 }), 0, 0.03, 0, P.tray).rotation.x = Math.PI / 2
-  P.tray.children[1].scale.y = 0.75
+  P.tray.children[1].scale.x = 0.75
   castShadow(P.g)
   P.blob = addBlobShadow(P.g, 1.4, { floorY: 0, opacity: 0.4, parent: scene })
 }
@@ -379,7 +384,7 @@ function setFill(c, f) {
 }
 function layoutTray() {
   const n = S.tray.length, cols = n <= 4 ? n : n <= 8 ? Math.ceil(n / 2) : Math.ceil(n / 3), rows = Math.ceil(n / Math.max(1, cols))
-  S.tray.forEach((c, i) => { const cx = i % cols, rz = Math.floor(i / cols); c.g.position.set((cx - (cols - 1) / 2) * 0.27, 0.03, (rz - (rows - 1) / 2) * 0.27); c.col = cols > 1 ? Math.abs(cx - (cols - 1) / 2) / ((cols - 1) / 2) : 0 })
+  S.tray.forEach((c, i) => { const cx = i % cols, rz = Math.floor(i / cols); c.g.position.set((rz - (rows - 1) / 2) * 0.27, 0.03, (cx - (cols - 1) / 2) * 0.27); c.col = cols > 1 ? Math.abs(cx - (cols - 1) / 2) / ((cols - 1) / 2) : 0 })
 }
 function addCup(id) {
   if (S.tray.length >= 12) return false
@@ -388,7 +393,7 @@ function addCup(id) {
 function clearTray() { for (const c of S.tray) c.g.removeFromParent(); S.tray = []; layoutTray() }
 
 // ---------- 席の客
-function seatPos(i, k) { const x = TX(i); return [[x - 1.15, ZA_Z, Math.PI / 2], [x + 1.15, ZA_Z, -Math.PI / 2], [x, ZA_Z - 0.85, 0]][k] }
+function seatPos(i, k) { const x = TX(i), s = SIDE(i), z = s * ZA_Z; return [[x - 1.15, z, Math.PI / 2], [x + 1.15, z, -Math.PI / 2], [x, z + s * 0.85, s < 0 ? 0 : Math.PI]][k] }
 function setupTables() {
   const rnd = mulberry(11)
   S.tables = []
@@ -407,7 +412,7 @@ function setupTables() {
 }
 // ---------- 店長（カウンターの中）
 const BOSS = { c: null }
-function setupBoss() { BOSS.c = makeChar('male-d', { anim: 'idle' }); if (!BOSS.c) return; BOSS.c.g.position.set(-2.2, 0, -3.1); BOSS.c.g.rotation.y = 0.5; scene.add(BOSS.c.g) }
+function setupBoss() { BOSS.c = makeChar('male-d', { anim: 'idle' }); if (!BOSS.c) return; BOSS.c.g.position.set(-1.4, 0, 0.4); BOSS.c.g.rotation.y = Math.PI / 2; scene.add(BOSS.c.g) }
 
 // ---------- 吹き出し（DOM）
 const FX = []
@@ -426,20 +431,23 @@ function bubble(c, text, cls = '', life = 1.6, html = false) {
 function clearFx() { for (const f of FX) f.el.remove(); FX.length = 0; for (const t of S.tables) for (const c of t.cust) c.bub = null; if (BOSS.c) BOSS.c.bub = null; if (P.rider) P.rider.bub = null }
 function updateFx(dt) {
   const top = 52, bot = innerHeight - (S.mode === 'play' ? 110 : 12)
+  let behindN = 0
   for (let i = FX.length - 1; i >= 0; i--) {
     const f = FX[i]; f.t += dt
     if (f.t >= f.life || (f.c && !f.c.g.parent)) { f.el.remove(); FX.splice(i, 1); if (f.c && f.c.bub === f.el) f.c.bub = null; continue }
     const k = f.t / f.life
     if (f.kind === 'ono') {
       const s = toScreen(_w.copy(f.pos).add(_q.set(0, f.rise * ease(k * 2), 0)))
+      if (s.z > 1) { f.el.style.opacity = 0; continue }
       const sc = k < 0.12 ? 0.4 + k / 0.12 * 0.8 : 1.2 - Math.min(0.2, (k - 0.12) * 2)
       const w = f.el.offsetWidth, x = clamp(s.x, w / 2 + 8, innerWidth - w / 2 - 8)
       f.el.style.transform = `translate(${x - w / 2}px,${s.y - 20}px) rotate(${f.rot}deg) scale(${sc})`; f.el.style.opacity = k > 0.75 ? (1 - k) / 0.25 : 1
     } else {
       const s = toScreen(headPos(f.c, _hp)), w = f.el.offsetWidth, h = f.el.offsetHeight
-      const off = s.x < 0 ? -1 : s.x > innerWidth ? 1 : 0
-      f.el.dataset.off = off
-      const x = clamp(s.x - w / 2, 8, innerWidth - w - 8), y = clamp(s.y - h - 10, top, bot - h)
+      const back = s.z > 1
+      f.el.dataset.off = back ? 'back' : s.x < 0 ? -1 : s.x > innerWidth ? 1 : 0
+      let x = clamp(s.x - w / 2, 8, innerWidth - w - 8), y = clamp(s.y - h - 10, top, bot - h)
+      if (back) { x = (innerWidth - w) / 2; y = top + 44 + behindN * (h + 6); behindN++ }
       const sc = f.t < 0.12 ? 0.5 + f.t / 0.12 * 0.5 : 1
       const jig = f.el.classList.contains('hot') ? Math.sin(S.time * 60) * 2 : 0
       f.el.style.transform = `translate(${x + jig}px,${y}px) scale(${sc})`; f.el.style.opacity = k > 0.88 ? (1 - k) / 0.12 : 1
@@ -456,11 +464,24 @@ function addObs(kind, x, o = {}) {
   if (kind === 'towel') { ob.w = 0.16; ob.h = 0.24; const g = new THREE.Group(); const m = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.4, 12), towelMat, 0, 0, 0, g); m.rotation.x = Math.PI / 2; m.castShadow = true; g.position.set(x, 0.12, 0.1); scene.add(g); ob.g = g }
   if (kind === 'puddle') { ob.w = o.w ?? 0.7; ob.h = 0; const m = mesh(new THREE.CircleGeometry(1, 20), pudMat, x, 0.006, 0.1); m.rotation.x = -Math.PI / 2; m.scale.set(ob.w, 0.6, 1); scene.add(m); ob.g = m; ob.life = o.life ?? 30 }
   if (kind === 'sleep') {
-    ob.w = 0.5; ob.h = 0.42
+    ob.w = 0.4; ob.h = 0.45
     const name = pick(['male-a', 'male-b', 'male-c', 'male-f', 'female-c'])
-    const c = makeChar(name, { anim: 'die' }); if (c) { play(c, 'die', 0, 1, true); c.mixer.update(3); c.g.position.set(x, 0, 0.05); c.g.rotation.y = R() < 0.5 ? Math.PI / 2 : -Math.PI / 2; scene.add(c.g); ob.c = c; c.zT = 0 }
+    const c = makeChar(name, { anim: 'die' })
+    if (c) {
+      play(c, 'die', 0, 1, true); c.mixer.update(3); const fl = R() < 0.5 ? 1 : -1
+      c.g.rotation.y = fl > 0 ? 0 : Math.PI; c.g.position.set(x, 0, 0); scene.add(c.g)
+      // 体の中心を通路の真ん中・当たり判定の真ん中に合わせる
+      const bb = bodyBox(c.g); c.g.position.x += x - (bb.min.x + bb.max.x) / 2; c.g.position.z -= (bb.min.z + bb.max.z) / 2
+      ob.c = c; c.zT = 0
+    }
   }
   S.obs.push(ob); return ob
+}
+const _bb = new THREE.Box3(), _bv = new THREE.Vector3()
+function bodyBox(root) {
+  root.updateMatrixWorld(true); _bb.makeEmpty()
+  root.traverse(m => { if (!m.isMesh) return; const pos = m.geometry.attributes.position; for (let i = 0; i < pos.count; i += 3) { _bv.fromBufferAttribute(pos, i); if (m.isSkinnedMesh) m.applyBoneTransform(i, _bv); _bv.applyMatrix4(m.matrixWorld); _bb.expandByPoint(_bv) } })
+  return _bb
 }
 function freeObs(ob) { if (ob.g) ob.g.removeFromParent(); if (ob.c) { ob.c.g.removeFromParent(); if (ob.c.anger) ob.c.anger.removeFromParent(); if (ob.c.bub) ob.c.bub.remove() } }
 function clearObs() { for (const ob of S.obs) freeObs(ob); S.obs = []; for (const x of THRESH) addObs('step', x) }
@@ -486,11 +507,11 @@ function avail() { const f = S.t / D.SHIFT.sec; const lv = f < 0.3 ? 0 : f < 0.5
 function makeOrder(first) {
   if (first) return [{ id: 'beer', n: 2 }]
   const f = S.t / D.SHIFT.sec, ds = avail()
-  const total = clamp(Math.round(1.5 + f * 8 + (R() - 0.5) * 3), 1, 11)
-  const kinds = clamp(1 + Math.floor(R() * (1.5 + f * 3)), 1, Math.min(ds.length, total, 4))
+  const total = clamp(Math.round(1.2 + f * 4.5 + (R() - 0.5) * 2), 1, 6)
+  const kinds = clamp(1 + Math.floor(R() * (1 + f * 2)), 1, Math.min(ds.length, total, 3))
   const ids = []; const pool = [...ds]
   // 後半は紛らわしい組み合わせを混ぜる
-  if (f > 0.3 && R() < 0.5) { const pair = pick([['oolong', 'oolonghi'], ['lemon', 'lemonhi'], ['lemon', 'grape']]).filter(id => pool.some(d => d.id === id)); for (const id of pair) if (ids.length < kinds) ids.push(id) }
+  if (f > 0.5 && R() < 0.3) { const pair = pick([['oolong', 'oolonghi'], ['lemon', 'lemonhi'], ['lemon', 'grape']]).filter(id => pool.some(d => d.id === id)); for (const id of pair) if (ids.length < kinds) ids.push(id) }
   while (ids.length < kinds) { const d = pick(pool); if (!ids.includes(d.id)) ids.push(d.id) }
   const out = ids.map(id => ({ id, n: 1 })); for (let k = kinds; k < total; k++) out[Math.floor(R() * kinds)].n++
   // 生が一番多いのが居酒屋
@@ -524,7 +545,7 @@ function updateTables(dt) {
     t.angry = t.wait > angryAt ? 1 : 0
     if (t.st === 'call' && t.callT <= 0 && caller) {
       const hot = t.angry
-      if (!(S.order && S.order.t === t && S.order.showT > 0)) bubble(caller, (Math.abs(t.x - S.x) > 6 ? (t.x > S.x ? '▶ ' : '◀ ') : '') + T.tableN.replace('{N}', t.i + 1) + ' ' + (hot ? pick(T.callAngry) : pick(T.call)), hot ? 'hot' : '', 1.8)
+      if (!(S.order && S.order.t === t && S.order.showT > 0)) bubble(caller, ((t.x - S.x) * S.dir < -1 ? T.behind + ' ' : '') + T.tableN.replace('{N}', t.i + 1) + ' ' + (hot ? pick(T.callAngry) : pick(T.call)), hot ? 'hot' : '', 1.8)
       play(caller, 'interact-right', 0.15)
       Snd.sfx('call', { hot }); t.callT = hot ? 2.2 : 3.2
     }
@@ -538,10 +559,17 @@ function updateTables(dt) {
       t.st = 'gone'; t.leaveT = 0; bossSay(T.bossLeft, 2)
     }
   }
+  for (const t of S.tables) {
+    const sp = plates[t.i]; if (!sp) continue
+    const hot = t.st === 'call' || (t.st === 'order' && t.angry)
+    sp.material = hot ? sp.userData.hot : sp.userData.cold
+    sp.position.y = sp.userData.y + (hot ? Math.abs(Math.sin(S.time * 6)) * 0.25 : 0)
+    sp.scale.setScalar(hot ? 0.78 : t.st === 'order' ? 0.6 : 0.46)
+  }
   // 帰った席はしばらくして新しい客
   for (const t of S.tables) if (t.st === 'gone') { t.leaveT += dt; for (const c of t.cust) c.g.visible = t.leaveT < 1.2 ? Math.sin(t.leaveT * 30) > 0 : false; if (t.leaveT > 14) { t.st = 'idle'; t.wait = 0; for (const c of t.cust) { c.g.visible = true; if (c.anger) c.anger.visible = false } } }
 }
-function nearTable() { let best = null; for (const t of S.tables) { const d = Math.abs(t.x - S.x); if (d < 1.7 && (!best || d < Math.abs(best.x - S.x))) best = t } return best }
+function nearTable() { let best = null; for (const t of S.tables) { const d = Math.abs(t.x - S.x); if (d < 1.45 && (!best || d < Math.abs(best.x - S.x))) best = t } return best }
 function stopped() { return Math.abs(S.v) < 1.6 && S.y <= 0.001 && S.fallT <= 0 }
 function updateService(dt) {
   const T = TT()
@@ -552,7 +580,7 @@ function updateService(dt) {
     if (t.st === 'call' && !S.order && !S.tray.length) {
       // 注文を聞く（一瞬で消える）
       const list = makeOrder(S.served === 0 && S.tut >= 0)
-      const n = orderCount(list), show = 1.6 + n * 0.28
+      const n = orderCount(list), show = 2.4 + n * 0.35
       S.order = { t, list, showT: show, asked: 1 }; t.st = 'order'; t.wait = 0; t.callT = show + 4
       bubble(t.cust[0], orderHtml(list), 'order', show, true); play(t.cust[0], 'emote-yes', 0.15)
       Snd.sfx('order'); bubble(P.rider, T.yorokonde, 'warm', 1.0)
@@ -561,7 +589,7 @@ function updateService(dt) {
       else if (S.order.away && S.order.showT < 0) {
         S.order.away = 0
         // もう一回聞く（怒られる）
-        S.order.asked++; const n = orderCount(S.order.list), show = 1.2 + n * 0.2; S.order.showT = show
+        S.order.asked++; const n = orderCount(S.order.list), show = 1.8 + n * 0.3; S.order.showT = show
         bubble(t.cust[0], `<b>${T.reAsk}</b><br>` + orderHtml(S.order.list).split('<br>').slice(1).join('<br>'), 'order', show, true); t.wait += 6; t.callT = show + 3
         Snd.sfx('wrong')
       }
@@ -628,21 +656,28 @@ function updateRider(dt) {
     P.body.rotation.z = -S.th
     return
   }
-  const fwd = (S.inF || S.keyF) ? 1 : 0, back = (S.inB || S.keyB) ? 1 : 0
-  const u = fwd - back
+  const pedal = (S.inF || S.keyF) && !S.turnQ ? 1 : 0, brake = (S.inB || S.keyB || S.turnQ) ? 1 : 0
+  const vr = S.v * S.dir
   let target = 0
-  if (u > 0) target = S.v < 0 ? BRAKE : ACC
-  else if (u < 0) target = S.v > 0 ? -BRAKE : -ACC
-  else target = -Math.sign(S.v) * Math.min(Math.abs(S.v) / dt, DRAG)
+  if (brake) target = vr > 0.02 ? -BRAKE : vr < -0.02 ? BRAKE : 0
+  else if (pedal) target = vr < 0 ? BRAKE : ACC
+  else target = S.y > 0.001 ? 0 : -Math.sign(vr) * Math.min(Math.abs(vr) / dt, DRAG)  // 空中では減速しない
   S.acc = lerp(S.acc, target, clamp(dt * 9, 0, 1))
-  S.v = clamp(S.v + S.acc * dt, -VMAX * 0.7, VMAX)
-  if (u === 0 && Math.abs(S.v) < 0.05) S.v = 0
+  let nvr = vr + S.acc * dt
+  if (brake && vr !== 0 && Math.sign(nvr) !== Math.sign(vr)) { nvr = 0; S.acc = 0 }
+  nvr = clamp(nvr, -1.5, VMAX)
+  if (!pedal && Math.abs(nvr) < 0.05) nvr = 0
+  S.v = nvr * S.dir
+  // Uターン（速いときはまずブレーキ）
+  if (S.turnQ && Math.abs(S.v) < 0.7 && S.y <= 0.001) { S.dir = -S.dir; S.v = 0; S.acc = 0; S.turnQ = 0; S.turns++; Snd.sfx('squeak') }
+  // こぎっぱなしだと後ろへ傾いていく。離すと戻る
+  if (pedal && S.y <= 0.001) S.heat += dt; else S.heat = Math.max(0, S.heat - dt * 1.7)
   let nx = S.x + S.v * dt
   // 跳ぶ
-  if (S.jumpQ > 0) { S.jumpQ -= dt; if (S.y <= 0.001) { S.vy = 7; S.jumpQ = 0; Snd.sfx('jump'); if (P.rider) bubble(P.rider, T.jumpS, '', 0.6) } }
+  if (S.jumpQ > 0) { S.jumpQ -= dt; if (S.y <= 0.001) { S.vy = 7.5; S.jumpQ = 0; Snd.sfx('jump'); if (P.rider) bubble(P.rider, T.jumpS, '', 0.6) } }
   if (S.y > 0 || S.vy > 0) {
     S.vy -= 20 * dt; S.y += S.vy * dt
-    if (S.y <= 0) { const imp = -S.vy; S.y = 0; S.vy = 0; Snd.sfx('land'); kick((R() - 0.4) * 0.9 * imp / 6 * Math.sign(S.v || 1), 'land'); splashAll(0.015 + 0.006 * S.tray.length, 0.6); fx.squash(P.body, 0.12, 0.3) }
+    if (S.y <= 0) { const imp = -S.vy; S.y = 0; S.vy = 0; Snd.sfx('land'); kick((R() - 0.4) * 0.9 * imp / 6 * Math.sign(S.v * S.dir || 1), 'land'); splashAll(0.015 + 0.006 * S.tray.length, 0.6); fx.squash(P.body, 0.12, 0.3) }
   }
   // ぶつかる
   const pw = 0.22
@@ -655,26 +690,30 @@ function updateRider(dt) {
     if (!inNow || S.y > ob.h) { if (!inNow) ob.hit = 0; continue }
     if (ob.hit) continue
     ob.hit = 1
-    const sv = Math.sign(S.v || S.dir), spd = Math.abs(S.v) / VMAX
-    if (ob.kind === 'stand') { nx = S.x; S.v = -sv * 1.4; kick(sv * (0.8 + 1.6 * spd), 'stand'); Snd.sfx('bump'); bubble(ob.c, T.bump, 'warm', 0.9); splashAll(0.1 + 0.25 * spd, 1) }
-    else if (ob.kind === 'step') { S.v *= 0.75; kick(sv * (0.5 + 1.5 * spd), 'step'); Snd.sfx('bump'); splashAll(0.06 + 0.15 * spd, 0.8) }
-    else if (ob.kind === 'sleep') { S.v *= 0.3; kick(sv * (0.9 + 1.9 * spd), 'sleep'); Snd.sfx('bump'); if (ob.c) bubble(ob.c, T.bump, 'warm', 0.9); splashAll(0.12 + 0.2 * spd, 1) }
-    else if (ob.kind === 'towel') { S.v *= 0.6; kick(sv * (0.7 + 1.5 * spd), 'towel'); Snd.sfx('bump'); splashAll(0.08 + 0.15 * spd, 0.8); ob.v *= -0.6 }
+    const sv = Math.sign(S.v || S.dir), fw = Math.sign(S.v * S.dir || 1), spd = Math.abs(S.v) / VMAX
+    if (ob.kind === 'stand') { nx = S.x; S.v = -sv * 1.4; kick(fw * (0.8 + 1.6 * spd), 'stand'); Snd.sfx('bump'); bubble(ob.c, T.bump, 'warm', 0.9); splashAll(0.1 + 0.25 * spd, 1) }
+    else if (ob.kind === 'step') { S.v *= 0.75; kick(fw * (0.5 + 1.5 * spd), 'step'); Snd.sfx('bump'); splashAll(0.06 + 0.15 * spd, 0.8) }
+    else if (ob.kind === 'sleep') { S.v *= 0.3; kick(fw * (0.9 + 1.9 * spd), 'sleep'); Snd.sfx('bump'); if (ob.c) bubble(ob.c, T.bump, 'warm', 0.9); splashAll(0.12 + 0.2 * spd, 1) }
+    else if (ob.kind === 'towel') { S.v *= 0.6; kick(fw * (0.7 + 1.5 * spd), 'towel'); Snd.sfx('bump'); splashAll(0.08 + 0.15 * spd, 0.8); ob.v *= -0.6 }
   }
   nx = clamp(nx, 0.9, LEN - 0.5); if (nx === 0.9 || nx === LEN - 0.5) S.v = 0
   const dx = nx - S.x; S.x = nx
   S.wheelA -= dx / WR
-  if (Math.abs(S.v) > 0.3) S.dir = Math.sign(S.v)
   // ふらつき（傾き θ はバネで戻るが、速さ・杯数・加速・水たまりで揺れる）
   const n = S.tray.length, spd = Math.abs(S.v) / VMAX
-  const sig = (0.25 + 1.25 * Math.pow(spd, 1.5)) * (1 + 0.05 * n) * (slip ? 2.2 : 1)
+  const sig = (0.2 + 0.9 * Math.pow(spd, 1.5)) * (1 + 0.05 * n) * (slip ? 2.2 : 1)
   if (slip && Math.abs(S.v) > 0.5 && R() < dt * 3) { kick((R() - 0.5) * 1.4, 'slip'); if (R() < 0.3) Snd.sfx('squeak') }
   S.lastKick = Math.abs(S.om) < 0.5 ? null : S.lastKick
-  const F = -0.06 * S.acc + sig * noiseF(S.time * (1 + spd * 0.6)) * 0.9
+  const lean = 1.15 * Math.pow(S.heat, 1.3)
+  const F = -0.06 * S.acc - lean + sig * noiseF(S.time * (1 + spd * 0.6)) * 0.9
   const al = -10 * S.th - 2.6 * S.om + F
   S.om += al * dt; S.th += S.om * dt
-  if (Math.abs(S.th) > 0.62 && S.y <= 0.001) fall(Math.sign(S.th))
+  if (Math.abs(S.th) > 0.62 && S.y <= 0.001) fall(Math.sign(S.th) * S.dir, Math.sign(S.th))
   P.body.rotation.z = -S.th
+  // 後ろに傾き始めたら本人が声を出す（見て分かる合図）
+  S.tiltT = (S.tiltT || 0) - dt
+  if (S.th < -0.17 && S.tiltT <= 0 && P.rider) { S.tiltT = 2.2; bubble(P.rider, pick(T.tilt), 'warm', 1.1); Snd.sfx('squeak') }
+  S.roll = Math.sin(S.time * 3.1) * 0.025 * (1 + spd * 2) + Math.sin(S.time * 5.3) * 0.01
   // こぼれる
   const thr = clamp(0.2 - 0.008 * n, 0.09, 0.2)
   const over = Math.max(0, Math.abs(S.th) - thr), wob = Math.max(0, Math.abs(S.om) - 1.1)
@@ -683,7 +722,7 @@ function updateRider(dt) {
     for (const c of S.tray) { const d = (over * 2.4 + wob * 0.05) * c.k * (1 + c.col * 0.4) * dt; if (c.fill > 0 && d > 0) { setFill(c, c.fill - d); lost += d } }
     S.spillAcc = (S.spillAcc || 0) + lost
     S.spillBy[slip ? 'slip' : spd > 0.6 ? 'fast' : 'slowtilt'] = (S.spillBy[slip ? 'slip' : spd > 0.6 ? 'fast' : 'slowtilt'] || 0) + lost
-    if (S.spillAcc > 0.06) { const c = pick(S.tray); emitDrops(c.g.getWorldPosition(new THREE.Vector3()), 3 + Math.floor(S.spillAcc * 20), DK[c.id].liq, Math.sign(S.th) * 2); Snd.sfx('splash', { v: Math.min(1, S.spillAcc * 4) }); S.spillAcc = 0; maybePuddle() }
+    if (S.spillAcc > 0.06) { const c = pick(S.tray); emitDrops(c.g.getWorldPosition(new THREE.Vector3()), 3 + Math.floor(S.spillAcc * 20), DK[c.id].liq, Math.sign(S.th) * S.dir * 2); Snd.sfx('splash', { v: Math.min(1, S.spillAcc * 4) }); S.spillAcc = 0; maybePuddle() }
   }
 }
 function splashAll(amt, chance) {
@@ -694,9 +733,9 @@ function splashAll(amt, chance) {
   if (lost > 0.05) { const p = P.tray.getWorldPosition(new THREE.Vector3()); emitDrops(p, 6 + Math.floor(lost * 12), 0xf2a91a, S.dir * 1.5); Snd.sfx('splash', { v: Math.min(1, lost) }); if (lost > 0.4) ono(TT().spill, p, 'yel', { size: 26 }); maybePuddle(); if (lost > 0.5) photoMoment(lost) }
 }
 function maybePuddle() { if (S.y > 0.01) return; if (S.obs.some(o => o.kind === 'puddle' && Math.abs(o.x - S.x) < 1.2)) return; if (S.x < COUNTER_X + 1) return; addObs('puddle', S.x - S.dir * 0.3, { w: 0.45 + R() * 0.3, life: 22 }) }
-function fall(dir) {
+function fall(dir, local = 1) {
   const T = TT()
-  S.fallT = 1.8; S.fallDir = dir; S.falls++; (S.fallWhy = S.fallWhy || []).push(S.lastKick || 'tilt')
+  S.fallT = 1.8; S.fallDir = local; S.falls++; S.heat = 0; S.inF = 0; S.turnQ = 0; (S.fallWhy = S.fallWhy || []).push(S.lastKick || 'tilt')
   const n = S.tray.length
   S.money.broken += n
   const p = P.tray.getWorldPosition(new THREE.Vector3())
@@ -741,7 +780,7 @@ function updateObs(dt) {
     const ob = S.obs[i]; ob.t += dt
     if (ob.kind === 'towel') { ob.x += ob.v * dt; ob.g.position.x = ob.x; ob.g.rotation.z -= ob.v * dt / 0.12 }
     if (ob.kind === 'puddle') { const k = ob.t < 0.4 ? ob.t / 0.4 : ob.life - ob.t < 2 ? (ob.life - ob.t) / 2 : 1; ob.g.scale.set(ob.w * k, 0.6 * k, 1) }
-    if (ob.kind === 'sleep' && ob.c) { ob.c.mixer.update(0); ob.c.g.position.y = 0; if (ob.t > ob.life - 1) ob.c.g.visible = Math.sin(ob.t * 30) > 0 }
+    if (ob.kind === 'sleep' && ob.c) { ob.c.mixer.update(0); if (ob.t > ob.life - 1) ob.c.g.visible = Math.sin(ob.t * 30) > 0 }
     if (ob.kind === 'stand') updateStander(ob, dt)
     if (ob.t > ob.life || (ob.kind === 'towel' && (ob.x < 0 || ob.x > LEN))) { freeObs(ob); S.obs.splice(i, 1) }
   }
@@ -756,8 +795,8 @@ function standUp(t) {
 function updateStander(ob, dt) {
   const c = ob.c, [hx, hz, hr] = c.home, k = ob.t < 0.5 ? ob.t / 0.5 : ob.t > ob.life - 0.6 ? (ob.life - ob.t) / 0.6 : 1
   ob.up = k
-  c.g.position.set(lerp(hx, ob.x, ease(k)), lerp(ZA_Y, 0, ease(k)), lerp(hz, 0.15, ease(k)))
-  c.g.rotation.y = lerp(hr, 0, ease(k))
+  c.g.position.set(lerp(hx, ob.x, ease(k)), lerp(ZA_Y, 0, ease(k)), lerp(hz, 0, ease(k)))
+  c.g.rotation.y = lerp(hr, S.dir > 0 ? -Math.PI / 2 : Math.PI / 2, ease(k))
   if (k > 0.2) play(c, 'idle', 0.2); else play(c, 'sit', 0.2)
   c.armOpen = k
   if (ob.t > ob.life - 0.01) { c.g.position.set(hx, ZA_Y, hz); c.g.rotation.y = hr; c.armOpen = 0; play(c, 'sit', 0.1); ob.tab.standing = 0 }
@@ -790,7 +829,7 @@ function updateGame(dt) {
 function endShift() {
   S.ended = true; S.mode = 'end'; S.endT = 0; Snd.sfx('end'); Snd.setTrack('end')
   bossSay(TT().bossEnd, 3); $('#counter').hidden = true; $('#hint').hidden = true; $('#finger').hidden = true
-  for (const id of ['#ctlL', '#ctlR']) $(id).style.visibility = 'hidden'
+  for (const id of ['#ctlL', '#ctlR', '#map']) $(id).style.visibility = 'hidden'
   if (!S.photo) S.doCap = true
 }
 function updateEnd(dt) { S.endT += dt; S.v *= 0.9; S.acc = 0; updateDrops(dt); updateFlying(dt); if (S.endT > 2.2) toResult() }
@@ -801,11 +840,16 @@ function updateTutorial() {
   if (S.tut < 0 || S.mode !== 'play') { h.hidden = true; fg.hidden = true; return }
   const T = TT(); let txt = '', el = null
   const calling = S.tables.find(t => t.st === 'call')
-  if (!S.order && calling) { const near = Math.abs(calling.x - S.x) < 1.7; txt = near ? T.tutStop : (isTouch ? T.tutGo : T.tutGoPC); el = near ? null : (calling.x > S.x ? '#bFwd' : '#bBack') }
+  const facing = x => (x - S.x) * S.dir > 0
+  const pedalOn = S.inF || S.keyF
+  const lean = S.th < -0.12 && pedalOn
+  const turn = () => { txt = isTouch ? T.tutTurn : T.tutTurnPC; el = '#bTurn' }
+  if (lean) { txt = T.tutLean; el = '#bFwd' }
+  else if (!S.order && calling) { const near = Math.abs(calling.x - S.x) < 1.45; if (near) { txt = T.tutStop; el = Math.abs(S.v) > 1.2 ? '#bBack' : null } else if (!facing(calling.x)) turn(); else { txt = isTouch ? T.tutGo : T.tutGoPC; el = pedalOn ? null : '#bFwd' } }
   else if (S.order && S.order.showT > 0) txt = T.tutMem
-  else if (S.order && !S.tray.length && !atCounter()) { txt = T.tutBack; el = '#bBack' }
+  else if (S.order && !S.tray.length && !atCounter()) { if (facing(COUNTER_X + 3)) { txt = T.tutBack; el = pedalOn ? null : '#bFwd' } else turn() }
   else if (S.order && atCounter()) txt = T.tutPick
-  else if (S.order && S.tray.length) { txt = T.tutCarry; el = S.obs.some(o => o.kind === 'sleep' && Math.abs(o.x - S.x) < 5) ? '#bJump' : '#bFwd' }
+  else if (S.order && S.tray.length) { if (!facing(S.order.t.x)) turn(); else { txt = T.tutCarry; el = S.obs.some(o => o.kind === 'sleep' && (o.x - S.x) * S.dir > 0 && (o.x - S.x) * S.dir < 5) ? '#bJump' : pedalOn ? null : '#bFwd' } }
   h.hidden = !txt; if (txt && h.textContent !== txt) h.textContent = txt
   if (el && isTouch) { const r = $(el).getBoundingClientRect(); fg.hidden = false; fg.style.transform = `translate(${r.left + r.width / 2 - 14}px,${r.top - 40}px)` } else fg.hidden = true
 }
@@ -816,23 +860,23 @@ function updateScene(dt) {
   P.g.position.set(S.x, S.y, 0)
   P.wheel.rotation.z = S.wheelA; P.ped.rotation.z = S.wheelA
   S.face = lerp(S.face, S.dir > 0 ? Math.PI / 2 : -Math.PI / 2, clamp(dt * 10, 0, 1))
-  P.body.rotation.y = S.face - Math.PI / 2
+  P.body.rotation.y = S.face - Math.PI / 2; P.body.rotation.x = S.roll
   if (P.rider) {
     P.rider.g.rotation.y = Math.PI / 2
     P.rider.mixer.update(dt)
     // 手はトレーを支える位置に（腕を前へ）
   }
   // トレーの位置（体の前・頭の上）と揺れ
-  P.tray.position.set(0.5, SEAT + 0.62 + Math.sin(S.time * 7) * 0.01 * Math.abs(S.v), 0.05)
-  P.tray.rotation.set(0, 0, -S.th * 0.4 + S.om * 0.03)
+  P.tray.position.set(0.1, SEAT + 0.5 + Math.sin(S.time * 7) * 0.01 * Math.abs(S.v), 0.5)
+  P.tray.rotation.set(S.roll * 0.6, 0, -S.th * 0.4 + S.om * 0.03)
   for (const c of S.tray) { if (c.foam) c.foam.position.x = Math.sin(S.time * 9 + c.k * 5) * 0.004 * (1 + Math.abs(S.om)) }
   // 客
   for (const t of S.tables) for (const c of t.cust) {
-    if (Math.abs(c.g.position.x - camera.position.x) > 16) continue
+    if (Math.abs(c.g.position.x - S.x) > 24) continue
     c.mixer.update(dt)
     if (c.armOpen > 0 && c.armL) { c.armL.rotation.z = -1.3 * c.armOpen; c.armR.rotation.z = 1.3 * c.armOpen }
   }
-  if (BOSS.c) { BOSS.c.mixer.update(dt); BOSS.c.g.rotation.y = lerp(BOSS.c.g.rotation.y, Math.atan2(S.x - BOSS.c.g.position.x, 3), 0.05) }
+  if (BOSS.c) { BOSS.c.mixer.update(dt); BOSS.c.g.rotation.y = lerp(BOSS.c.g.rotation.y, Math.atan2(S.x - BOSS.c.g.position.x, -BOSS.c.g.position.z), 0.05) }
   // のれん・提灯
   for (const g of lanterns) {
     if (g.userData.noren) { const near = Math.abs(S.x - g.position.x) < 0.6 && Math.abs(S.v) > 0.5; if (near) g.userData.flap = Math.max(g.userData.flap, Math.abs(S.v) / VMAX); g.userData.flap *= 0.97; g.children.forEach((p, i) => { if (p.userData.k !== undefined) p.rotation.x = Math.sin(S.time * 8 + i) * g.userData.flap * 0.6 }) }
@@ -840,25 +884,34 @@ function updateScene(dt) {
   }
   frameCamera(dt)
   // 太陽（影）を主人公に合わせて動かす
-  lk.sun.target.position.set(camX, 0, -1); lk.sun.position.copy(lk.sun.target.position).add(SUN_OFF); lk.sun.target.updateMatrixWorld()
+  lk.sun.target.position.set(S.x + S.dir * 5, 0, 0); lk.sun.position.copy(lk.sun.target.position).add(SUN_OFF); lk.sun.target.updateMatrixWorld()
 }
-let camX = 1.2, camLead = 0
+const _cp = new THREE.Vector3(), _cl = new THREE.Vector3(), camP = new THREE.Vector3(), camL = new THREE.Vector3()
+let camFace = Math.PI / 2, peek = 0, camInit = false
 function frameCamera(dt = 1) {
-  const a = innerWidth / innerHeight
+  const a = innerWidth / innerHeight, portrait = a < 1
   camera.aspect = a
-  const portrait = a < 1
-  camera.fov = portrait ? 40 : 32
-  const tv = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
-  const halfW = S.camHalfW || (portrait ? 3.4 : clamp(a * 4.2, 6.5, 10))
-  let d = halfW / (tv * a)
-  if (portrait) d = Math.min(d, 26)
-  const lead = S.mode === 'play' || S.mode === 'end' ? S.dir * halfW * 0.38 : 0
-  camLead = lerp(camLead, lead, clamp(dt * 1.6, 0, 1))
-  const want = clamp(S.x + camLead, S.mode === 'title' ? -1.2 : -halfW * 0.25, LEN - halfW * 0.6)
-  camX = dt >= 1 ? want : lerp(camX, want, clamp(dt * 5, 0, 1))
-  const el = portrait ? 0.48 : 0.3
-  camera.position.set(camX, 1.6 + d * el, d * Math.sqrt(1 - el * el))
-  camera.lookAt(camX, portrait ? 1.5 : 1.3, -1.0)
+  camera.fov = portrait ? 64 : a > 1.9 ? 46 : 52
+  const snap = dt >= 1 || !camInit; camInit = true
+  if (S.mode === 'title') {
+    // 正面の斜め前から主人公と店長
+    _cp.set(S.x + (portrait ? 4.4 : 3.6), 1.75, portrait ? 1.3 : 1.9); _cl.set(S.x - 0.8, portrait ? 1.55 : 1.3, -0.1)
+    camFace = S.face
+  } else {
+    let d = S.face - camFace; d = Math.atan2(Math.sin(d), Math.cos(d))
+    camFace = snap ? S.face : camFace + d * clamp(dt * 4.5, 0, 1)
+    const fx_ = Math.sin(camFace), fz_ = Math.cos(camFace), rx = -fz_, rz = fx_
+    const dist = portrait ? 3.5 : 3.9, h = portrait ? 3.0 : 2.85, side = portrait ? 0.85 : 1.0
+    const t = S.mode === 'play' ? (S.order && S.order.showT > 0 ? S.order.t : stopped() ? nearTable() : null) : null
+    const want = t ? SIDE(t.i) * rz : 0
+    peek = snap ? want : lerp(peek, want, clamp(dt * 3, 0, 1))
+    const sd = side - peek * 0.35, ahead = 4.6 - Math.abs(peek) * 1.6, lk = portrait ? 1.1 : 1.6
+    _cp.set(S.x - fx_ * dist + rx * sd, h, -fz_ * dist + rz * sd)
+    _cl.set(S.x + fx_ * ahead + rx * peek * lk, 0.75 + Math.abs(peek) * 0.25, fz_ * ahead + rz * peek * lk)
+  }
+  _cp.x = clamp(_cp.x, W0 + 0.4, W1 - 0.4); _cp.z = clamp(_cp.z, -WALL_Z + 0.5, WALL_Z - 0.5)
+  if (snap) { camP.copy(_cp); camL.copy(_cl) } else { const k = clamp(dt * 6, 0, 1); camP.lerp(_cp, k); camL.lerp(_cl, k) }
+  camera.position.copy(camP); camera.lookAt(camL)
   camera.updateProjectionMatrix()
 }
 
@@ -872,6 +925,7 @@ function applyLang() {
   $('#langTxt').textContent = S.lang === 'ja' ? 'EN' : 'JA'
   $('#bMoreX').setAttribute('aria-label', T.close)
   $('#drinks').dataset.key = ''
+  $('#map').innerHTML = ''
   if (S.mode === 'result') drawSlip(S.stamped ? 1 : 0)
   if (!$('#moreBox').hidden) fillMore()
 }
@@ -881,9 +935,10 @@ function resetRun(seed) {
   clearFx(); clearTray(); clearObs()
   for (const c of flying) c.g.removeFromParent(); flying.length = 0
   for (const t of S.tables) { t.st = 'idle'; t.wait = 0; t.standing = 0; for (const c of t.cust) { c.g.visible = true; c.armOpen = 0; const [x, z, r] = c.home; c.g.position.set(x, ZA_Y, z); c.g.rotation.y = r; play(c, 'sit', 0); if (c.anger) c.anger.visible = false } }
-  Object.assign(S, { t: 0, x: 1.2, v: 0, acc: 0, y: 0, vy: 0, dir: 1, th: 0, om: 0, fallT: 0, falls: 0, order: null, served: 0, nextCall: 1.2, money: { cups: 0, wrong: 0, spill: 0, broken: 0, left: 0 }, photo: null, photoScore: 0, capAt: null, fallWhy: [], lastKick: null, spillBy: {}, bossT: 6, ended: false, obsT: 8, result: null, jumpQ: 0, spillAcc: 0 })
+  Object.assign(S, { t: 0, x: 1.2, v: 0, acc: 0, y: 0, vy: 0, dir: 1, th: 0, om: 0, fallT: 0, falls: 0, order: null, served: 0, nextCall: 1.2, money: { cups: 0, wrong: 0, spill: 0, broken: 0, left: 0 }, photo: null, photoScore: 0, capAt: null, fallWhy: [], lastKick: null, spillBy: {}, bossT: 6, ended: false, obsT: 8, result: null, jumpQ: 0, spillAcc: 0, heat: 0, turnQ: 0, turns: 0, inF: 0, inB: 0, keyF: 0, keyB: 0, face: Math.PI / 2, roll: 0, tiltT: 0 })
+  camInit = false
   if (P.rider) { play(P.rider, 'holding-both', 0); P.body.rotation.z = 0 }
-  for (const id of ['#ctlL', '#ctlR']) $(id).style.visibility = ''
+  for (const id of ['#ctlL', '#ctlR', '#map']) $(id).style.visibility = ''
 }
 function startRun(seed) {
   Snd.init(); Snd.sfx('tap')
@@ -892,7 +947,23 @@ function startRun(seed) {
   setTimeout(() => { if (S.mode === 'play') bossSay(TT().bossStart, 2.2) }, 400)
 }
 function toTitle() { Snd.sfx('tap'); resetRun(); S.mode = 'title'; show('vTitle'); Snd.setTrack('title') }
+// 通路の見取り図（呼んでいる席と自分の位置）
+const MAP = { W: 200, H: 34, x: x => 12 + (x / LEN) * 182 }
+function buildMap() {
+  const m = $('#map'), T = TT()
+  m.innerHTML = `<svg viewBox="0 0 ${MAP.W} ${MAP.H}"><rect x="1" y="1" width="${MAP.W - 2}" height="${MAP.H - 2}" rx="8" class="mBg"/><rect x="${MAP.x(-1.2)}" y="5" width="5" height="${MAP.H - 10}" rx="2" class="mCt"/>` +
+    S.tables.map(t => `<g class="mT" id="mt${t.i}" transform="translate(${MAP.x(t.x)},${SIDE(t.i) < 0 ? 9 : MAP.H - 9})"><circle r="6.5"/><text y="3.3">${t.i + 1}</text></g>`).join('') +
+    `<path id="mMe" class="mMe" d="M-5 -4L5 0L-5 4z"/></svg>`
+}
+function updateMap() {
+  const m = $('#map'); if (!m.firstChild) buildMap()
+  for (const t of S.tables) { const g = $('#mt' + t.i); if (g) g.setAttribute('class', 'mT ' + (t.st === 'call' ? 'call' : t.st === 'order' ? (S.order && S.order.t === t ? 'mine' : 'call') : t.st)) }
+  const me = $('#mMe'); if (me) me.setAttribute('transform', `translate(${MAP.x(S.x)},${MAP.H / 2}) scale(${S.dir})`)
+}
 function updateHud() {
+  $('#bFwd').classList.toggle('on', !!(S.inF || S.keyF)); $('#bFwd').classList.toggle('hot', S.th < -0.15)
+  $('#bBack').classList.toggle('on', !!(S.inB || S.keyB)); $('#bTurn').classList.toggle('on', !!S.turnQ)
+  updateMap()
   const sh = D.SHIFT, m = sh.h0 * 60 + (sh.h1 - sh.h0) * 60 * clamp(S.t / sh.sec, 0, 1)
   const s = `${Math.floor(m / 60)}:${String(Math.floor(m % 60 / 5) * 5).padStart(2, '0')}`
   const el = $('#hClock'); if (el.textContent !== s) el.textContent = s
@@ -968,18 +1039,22 @@ function holdBtn(id, key) {
   const off = () => { S[key] = 0; b.classList.remove('on') }
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off)
 }
-holdBtn('#bFwd', 'inF'); holdBtn('#bBack', 'inB')
+holdBtn('#bBack', 'inB')
+$('#bBack').addEventListener('pointerdown', () => { S.inF = 0 })
+$('#bFwd').addEventListener('pointerdown', e => { e.preventDefault(); Snd.init(); if (S.mode !== 'play') return; S.inF = S.inF ? 0 : 1; S.turnQ = 0; Snd.sfx('tap') })
+$('#bTurn').addEventListener('pointerdown', e => { e.preventDefault(); Snd.init(); if (S.mode === 'play' && S.fallT <= 0) { S.turnQ = 1; S.inF = 0 } })
 $('#bJump').addEventListener('pointerdown', e => { e.preventDefault(); Snd.init(); if (S.mode === 'play' && S.fallT <= 0) S.jumpQ = 0.15 })
 addEventListener('keydown', e => {
   if (S.mode !== 'play') { if ((e.key === 'Enter' || e.key === ' ') && S.mode === 'title' && document.activeElement === document.body) { e.preventDefault(); startRun() } return }
   const k = e.key
-  if (k === 'ArrowRight' || k === 'd' || k === 'D') { S.keyF = 1; e.preventDefault() }
-  else if (k === 'ArrowLeft' || k === 'a' || k === 'A') { S.keyB = 1; e.preventDefault() }
-  else if (k === ' ' || k === 'ArrowUp' || k === 'w' || k === 'W') { if (S.fallT <= 0) S.jumpQ = 0.15; e.preventDefault() }
+  if (k === 'ArrowUp' || k === 'w' || k === 'W') { S.keyF = 1; e.preventDefault() }
+  else if (k === 'ArrowDown' || k === 's' || k === 'S') { S.keyB = 1; S.inF = 0; e.preventDefault() }
+  else if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'a' || k === 'A' || k === 'd' || k === 'D') { if (!e.repeat && S.fallT <= 0) { S.turnQ = 1; S.inF = 0 } e.preventDefault() }
+  else if (k === ' ') { if (S.fallT <= 0) S.jumpQ = 0.15; e.preventDefault() }
   else if (/^[1-9]$/.test(k) && !$('#counter').hidden) { const b = $('#drinks').querySelectorAll('.dk')[+k - 1]; if (b) b.click() }
   else if ((k === 'Backspace' || k === '0') && !$('#counter').hidden) { clearTray(); buildCounterUI() }
 })
-addEventListener('keyup', e => { const k = e.key; if (k === 'ArrowRight' || k === 'd' || k === 'D') S.keyF = 0; if (k === 'ArrowLeft' || k === 'a' || k === 'A') S.keyB = 0 })
+addEventListener('keyup', e => { const k = e.key; if (k === 'ArrowUp' || k === 'w' || k === 'W') S.keyF = 0; if (k === 'ArrowDown' || k === 's' || k === 'S') S.keyB = 0 })
 addEventListener('blur', () => { S.keyF = S.keyB = S.inF = S.inB = 0 })
 
 // ---------- ループ（固定60Hz）
@@ -993,7 +1068,7 @@ function step() {
   updateScene(STEP); updateFx(STEP); updateReveal(STEP); updateTutorial()
   if (S.doCap) { S.doCap = false; capturePhoto() }
 }
-function titleIdle(dt) { S.tt = (S.tt || 0) + dt; S.th = Math.sin(S.tt * 2.2) * 0.08; S.om = 0; P.body.rotation.z = -S.th; S.x = 1.6 + Math.sin(S.tt * 0.5) * 0.5; S.v = Math.cos(S.tt * 0.5) * 0.25; S.wheelA = -S.x / WR; S.dir = 1 }
+function titleIdle(dt) { S.tt = (S.tt || 0) + dt; S.th = Math.sin(S.tt * 2.2) * 0.08; S.om = 0; P.body.rotation.z = -S.th; S.x = 1.6 + Math.sin(S.tt * 0.5) * 0.5; S.v = Math.cos(S.tt * 0.5) * 0.25; S.wheelA = -S.x / WR; S.dir = 1; S.roll = Math.sin(S.tt * 3.1) * 0.03 }
 function loop() {
   requestAnimationFrame(loop)
   const now = performance.now(); let dt = (now - lastT) / 1000; lastT = now
@@ -1034,10 +1109,10 @@ window.IZ = {
   get charsReady() { return charsReady && !!P.rider },
   dbg: {
     pause(b = true) { S.dbgPause = b },
-    step(n = 1) { for (let i = 0; i < n; i++) step(); render() },
+    step(n = 1) { for (let i = 0; i < n; i++) step(); if (S.mode === 'play') updateHud(); render() },
     tick(n = 1) { for (let i = 0; i < n; i++) step() },
     start(seed) { S.dbgPause = false; startRun(seed) },
-    set(o) { Object.assign(S, o) },
+    set(o) { Object.assign(S, o); if ('x' in o || 'dir' in o) { camInit = false; if ('dir' in o) S.face = S.dir > 0 ? Math.PI / 2 : -Math.PI / 2 } },
     call(i) { const t = S.tables[i]; t.st = 'call'; t.wait = 0; t.callT = 0; return t.x },
     order(i, list) { const t = S.tables[i]; S.order = { t, list, showT: 0, asked: 1 }; t.st = 'order'; t.wait = 0 },
     tray(ids) { clearTray(); for (const id of ids) addCup(id) },
@@ -1045,6 +1120,8 @@ window.IZ = {
     clearObs() { clearObs() },
     stand(i) { standUp(S.tables[i]) },
     fall() { fall(1) },
+    body(i) { const ob = S.obs[i]; const b = bodyBox(ob.c.g); return { x: ob.x, w: ob.w, h: ob.h, bx: [b.min.x, b.max.x], by: b.max.y, bz: [b.min.z, b.max.z] } },
+    camera() { return { p: camera.position.toArray(), face: S.face, dir: S.dir } },
     end() { S.t = D.SHIFT.sec },
     toResult() { toResult() },
     reveal() { finishReveal() },
@@ -1056,7 +1133,7 @@ window.IZ = {
   },
   state() {
     return {
-      mode: S.mode, t: +S.t.toFixed(2), x: +S.x.toFixed(2), v: +S.v.toFixed(2), y: +S.y.toFixed(2), th: +S.th.toFixed(3), fallT: +S.fallT.toFixed(2), falls: S.falls, served: S.served,
+      mode: S.mode, t: +S.t.toFixed(2), x: +S.x.toFixed(2), v: +S.v.toFixed(2), y: +S.y.toFixed(2), th: +S.th.toFixed(3), fallT: +S.fallT.toFixed(2), heat: +S.heat.toFixed(2), dir: S.dir, turns: S.turns, falls: S.falls, served: S.served,
       tray: S.tray.map(c => ({ id: c.id, fill: +c.fill.toFixed(2) })), order: S.order ? { table: S.order.t.i, list: S.order.list, showT: +S.order.showT.toFixed(2) } : null,
       fallWhy: S.fallWhy, spillBy: S.spillBy, tables: S.tables.map(t => t.st), money: { ...S.money }, obs: S.obs.map(o => ({ k: o.kind, x: +o.x.toFixed(1) })), counter: !$('#counter').hidden, result: S.result ? { net: S.result.net, stamp: S.result.rank.st.ja } : null,
     }
