@@ -99,7 +99,7 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
 .pad svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
 .pad.on{transform:translateY(4px);box-shadow:0 1px 0 var(--ink);background:var(--yel)}
 .pad.pedal.on{box-shadow:0 1px 0 var(--ink),0 0 0 4px rgba(233,180,76,.45);animation:pedal .5s linear infinite}
-.pad.pedal.on svg{animation:spin .5s linear infinite}
+.ctl.col{flex-direction:column;gap:8px}
 .pad.pedal.hot{background:#ff7a5c;animation:shake .12s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shake{50%{translate:2px 0}}
@@ -248,12 +248,12 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
   </div>
   <div class="hint" id="hint" hidden></div>
   <div id="finger" hidden><svg viewBox="0 0 48 48"><path d="M18 26V9a3 3 0 0 1 6 0v12l9 2c3 .7 4.5 3 4 6l-2 10c-.4 2-2 3-4 3H22c-1.6 0-3-.8-3.8-2.2L12 29c-1-1.8.6-4 2.6-3.3z" fill="#fff" stroke="#1d1a16" stroke-width="2.6" stroke-linejoin="round"/></svg></div>
-  <div class="ctl" id="ctlL">
-    <button class="pad" id="bTurn" type="button" aria-label="U-turn"><svg viewBox="0 0 24 24"><path d="M8 20V10a5 5 0 0 1 10 0v4"/><path d="M14 11l4 4 4-4"/></svg><span data-t="turn"></span></button>
-    <button class="pad" id="bBack" type="button" aria-label="brake"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span data-t="brake"></span></button>
+  <div class="ctl col" id="ctlL">
+    <button class="pad pedal" id="bFwd" type="button" aria-label="forward"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg><span data-t="pedal"></span></button>
+    <button class="pad" id="bBack" type="button" aria-label="back"><svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg><span data-t="brake"></span></button>
   </div>
   <div class="ctl" id="ctlR">
-    <button class="pad pedal" id="bFwd" type="button" aria-label="pedal"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.6"/><path d="M12 12l4.5-4.5M14.5 5.5h4"/></svg><span data-t="pedal"></span></button>
+    <button class="pad" id="bTurn" type="button" aria-label="U-turn"><svg viewBox="0 0 24 24"><path d="M8 20V10a5 5 0 0 1 10 0v4"/><path d="M14 11l4 4 4-4"/></svg><span data-t="turn"></span></button>
     <button class="pad jump" id="bJump" type="button"><svg viewBox="0 0 24 24"><path d="M5 14l7-7 7 7"/><path d="M5 19h14"/></svg><span data-t="jump"></span></button>
   </div>
 </main>
@@ -299,7 +299,7 @@ html[lang=ja] .logo .main b{font-family:var(--disp);font-weight:400}
   },7000);
 })();
 </script>
-<script src="data.js?v=4"></script>
-<script type="module" src="game.js?v=4"></script>
+<script src="data.js?v=5"></script>
+<script type="module" src="game.js?v=5"></script>
 </body>
 </html>

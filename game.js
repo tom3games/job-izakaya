@@ -26,7 +26,7 @@ const ZA_Y = 0.36, ZA_Z = 2.75, AISLE = 1.4, WALL_Z = 5
 const W0 = -3.2, W1 = LEN + 3
 const CH = 1.5                     // 人の背丈
 const WR = 0.42, SEAT = 1.25       // 一輪車の車輪の半径・サドルの高さ
-const VMAX = 6.4, ACC = 6.5, BRAKE = 9, DRAG = 2.4
+const VMAX = 4.8, ACC = 3.9, BRAKE = 9, DRAG = 4   // 本人: 勢いが強すぎて止まりにくい → 加速と最高速を下げ、離すと早く止まる
 const THRESH = [TX(4) + 1.6]       // 段差（敷居）の位置
 const COUNTER_X = 2.0
 
@@ -659,14 +659,19 @@ function updateRider(dt) {
   const pedal = (S.inF || S.keyF) && !S.turnQ ? 1 : 0, brake = (S.inB || S.keyB || S.turnQ) ? 1 : 0
   const vr = S.v * S.dir
   let target = 0
-  if (brake) target = vr > 0.02 ? -BRAKE : vr < -0.02 ? BRAKE : 0
+  if (brake) target = vr > 0.05 ? -BRAKE : S.turnQ ? (vr < -0.02 ? BRAKE : 0) : -ACC * 0.5  // うしろ: 止まってから押し続けるとゆっくり下がる
   else if (pedal) target = vr < 0 ? BRAKE : ACC
-  else target = S.y > 0.001 ? 0 : -Math.sign(vr) * Math.min(Math.abs(vr) / dt, DRAG)  // 空中では減速しない
+  else {
+    // 止まりたい席（呼んでいる席・運び先）の前で指を離すと、そこでピタッと止まる
+    const nt = nearTable(), want = nt && (nt.st === 'call' || (S.order && S.order.t === nt)) && Math.abs(nt.x - S.x) < 1.2
+    const drag = want ? 11 : DRAG
+    target = S.y > 0.001 ? 0 : -Math.sign(vr) * Math.min(Math.abs(vr) / dt, drag)  // 空中では減速しない
+  }
   S.acc = lerp(S.acc, target, clamp(dt * 9, 0, 1))
   let nvr = vr + S.acc * dt
-  if (brake && vr !== 0 && Math.sign(nvr) !== Math.sign(vr)) { nvr = 0; S.acc = 0 }
-  nvr = clamp(nvr, -1.5, VMAX)
-  if (!pedal && Math.abs(nvr) < 0.05) nvr = 0
+  if (brake && vr > 0 && nvr < 0) { nvr = 0; S.acc = 0 }
+  nvr = clamp(nvr, -1.8, VMAX)
+  if (!pedal && !brake && Math.abs(nvr) < 0.05) nvr = 0
   S.v = nvr * S.dir
   // Uターン（速いときはまずブレーキ）
   if (S.turnQ && Math.abs(S.v) < 0.7 && S.y <= 0.001) { S.dir = -S.dir; S.v = 0; S.acc = 0; S.turnQ = 0; S.turns++; Snd.sfx('squeak') }
@@ -704,7 +709,7 @@ function updateRider(dt) {
   const sig = (0.2 + 0.9 * Math.pow(spd, 1.5)) * (1 + 0.05 * n) * (slip ? 2.2 : 1)
   if (slip && Math.abs(S.v) > 0.5 && R() < dt * 3) { kick((R() - 0.5) * 1.4, 'slip'); if (R() < 0.3) Snd.sfx('squeak') }
   S.lastKick = Math.abs(S.om) < 0.5 ? null : S.lastKick
-  const lean = 1.15 * Math.pow(S.heat, 1.3)
+  const lean = 0.36 * Math.pow(S.heat, 1.3)   // こぎっぱなしで約7秒で後ろに転ぶ
   const F = -0.06 * S.acc - lean + sig * noiseF(S.time * (1 + spd * 0.6)) * 0.9
   const al = -10 * S.th - 2.6 * S.om + F
   S.om += al * dt; S.th += S.om * dt
@@ -1039,9 +1044,9 @@ function holdBtn(id, key) {
   const off = () => { S[key] = 0; b.classList.remove('on') }
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off)
 }
-holdBtn('#bBack', 'inB')
-$('#bBack').addEventListener('pointerdown', () => { S.inF = 0 })
-$('#bFwd').addEventListener('pointerdown', e => { e.preventDefault(); Snd.init(); if (S.mode !== 'play') return; S.inF = S.inF ? 0 : 1; S.turnQ = 0; Snd.sfx('tap') })
+// こぐ・ブレーキは押している間だけ（本人: 勝手にこぎ続けるのはだるい）
+holdBtn('#bFwd', 'inF'); holdBtn('#bBack', 'inB')
+$('#bFwd').addEventListener('pointerdown', () => { S.turnQ = 0 })
 $('#bTurn').addEventListener('pointerdown', e => { e.preventDefault(); Snd.init(); if (S.mode === 'play' && S.fallT <= 0) { S.turnQ = 1; S.inF = 0 } })
 $('#bJump').addEventListener('pointerdown', e => { e.preventDefault(); Snd.init(); if (S.mode === 'play' && S.fallT <= 0) S.jumpQ = 0.15 })
 addEventListener('keydown', e => {

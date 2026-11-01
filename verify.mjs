@@ -78,16 +78,21 @@ await t('HUD にゲージ（バー・メーター）が無い', async () => { co
 await t('出勤: 遊ぶ画面・操作ボタン・時計', async () => { await p.click('#bStart'); await p.waitForTimeout(300); const r = await ev(p, () => ({ mode: IZ.S.mode, play: !document.querySelector('#vPlay').hidden, clock: document.querySelector('#hClock').textContent, btn: ['#bFwd', '#bBack', '#bJump', '#bTurn'].every(s => document.querySelector(s).getBoundingClientRect().width >= 44) })); expect(r.mode === 'play' && r.play && r.btn, JSON.stringify(r)); return r })
 await t('初回のチュートリアル: 呼ばれた席へ の案内', async () => { await ev(p, () => { IZ.dbg.pause(true); IZ.dbg.step(120) }); const r = await ev(p, () => ({ hint: document.querySelector('#hint').textContent, hid: document.querySelector('#hint').hidden, call: IZ.S.tables.findIndex(t => t.st === 'call') })); expect(!r.hid && r.call >= 0 && /こぐ/.test(r.hint), JSON.stringify(r)); return r })
 const down = (q, sel) => q.evaluate(sel => document.querySelector(sel).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1 })), sel)
-await t('こぐはスイッチ式: 1回押すと進み続け、もう1回で止まる', async () => {
+await t('こぐは押している間だけ進み、離すと止まっていく', async () => {
   await ev(p, () => { IZ.dbg.noObs(); IZ.dbg.clearObs(); IZ.dbg.set({ x: 3, v: 0, dir: 1, heat: 0, th: 0, om: 0 }) })
-  await down(p, '#bFwd'); const r = await ev(p, () => { const x0 = IZ.S.x; IZ.dbg.step(60); const a = { x0, x1: IZ.S.x, on: IZ.S.inF, lit: document.querySelector('#bFwd').classList.contains('on') }; return a })
-  await down(p, '#bFwd'); const r2 = await ev(p, () => { IZ.dbg.step(240); return { on: IZ.S.inF, v: IZ.S.v } })
+  await p.evaluate(() => document.querySelector('#bFwd').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1 })))
+  const r = await ev(p, () => { const x0 = IZ.S.x; IZ.dbg.step(60); return { x0, x1: IZ.S.x, on: IZ.S.inF, lit: document.querySelector('#bFwd').classList.contains('on') } })
+  await p.evaluate(() => document.querySelector('#bFwd').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1 })))
+  const r2 = await ev(p, () => { IZ.dbg.step(200); return { on: IZ.S.inF, v: IZ.S.v } })
   expect(r.x1 > r.x0 + 1.5 && r.on && r.lit && !r2.on && Math.abs(r2.v) < 0.1, JSON.stringify([r, r2])); return [r, r2] })
+await t('うしろ: 走っている時はブレーキ、止まってから押し続けるとゆっくり下がる', async () => {
+  const r = await ev(p, () => { IZ.dbg.set({ x: 10, v: 4, dir: 1, heat: 0, th: 0, om: 0, inB: 1 }); IZ.dbg.step(40); const a = { v: IZ.S.v, x: IZ.S.x }; IZ.dbg.step(90); const b = { v: IZ.S.v, x: IZ.S.x, dir: IZ.S.dir }; IZ.S.inB = 0; IZ.dbg.step(60); return { a, b, v2: IZ.S.v } })
+  expect(Math.abs(r.a.v) < 0.5 && r.b.v < -1 && r.b.v >= -1.81 && r.b.x < r.a.x && r.b.dir === 1 && Math.abs(r.v2) < 0.1, JSON.stringify(r)); return r })
 await t('こぎっぱなしだと後ろへ傾き、離すと戻る。こぎ続けると後ろに転ぶ', async () => {
   const r = await ev(p, () => {
-    IZ.dbg.clearObs(); IZ.dbg.set({ x: 2, v: 0, dir: 1, heat: 0, th: 0, om: 0, keyF: 1, falls: 0, fallWhy: [] }); IZ.dbg.step(120); const a = IZ.S.th
+    IZ.dbg.clearObs(); IZ.dbg.set({ x: 2, v: 0, dir: 1, heat: 0, th: 0, om: 0, keyF: 1, falls: 0, fallWhy: [] }); IZ.dbg.step(240); const a = IZ.S.th
     IZ.S.keyF = 0; IZ.dbg.step(90); const b = IZ.S.th
-    IZ.dbg.set({ x: 2, v: 0, heat: 0, th: 0, om: 0, keyF: 1 }); IZ.dbg.step(60 * 7); IZ.S.keyF = 0; const f = IZ.S.falls; IZ.dbg.step(130)
+    IZ.dbg.set({ x: 2, v: 0, heat: 0, th: 0, om: 0, keyF: 1 }); IZ.dbg.step(60 * 9); IZ.S.keyF = 0; const f = IZ.S.falls; IZ.dbg.step(130)
     return { lean2s: a, after: b, falls: f, why: IZ.S.fallWhy }
   })
   expect(r.lean2s < -0.15 && r.after > -0.08 && r.falls === 1, JSON.stringify(r)); return r })
