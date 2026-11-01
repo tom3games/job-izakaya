@@ -158,13 +158,13 @@ const Snd = {
 
 // ---------- 描画の土台
 const canvas = $('#gl')
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
-renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.6 : 2))
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false })
+const lowRes = () => clamp(360 / innerHeight, 0.3, 1)   // 廃れた見た目: 荒い画面
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x2a1a14)
-scene.fog = new THREE.Fog(0x2a1a14, 16, 48)
+scene.background = new THREE.Color(0x0c0907)
+scene.fog = new THREE.Fog(0x0c0907, 9, 30)
 const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 120)
-const lk = setupLook(renderer, scene, { env: true, envIntensity: 0.45, exposure: 1.08, sun: 1.6, sunPos: [3, 9, 6], hemi: 0.75, sky: 0xffe2b8, ground: 0x4a3024, sunColor: 0xffe0b0 })
+const lk = setupLook(renderer, scene, { env: true, envIntensity: 0.22, exposure: 0.95, sun: 0.75, sunPos: [3, 9, 6], hemi: 0.42, sky: 0xd9d3a8, ground: 0x2a2018, sunColor: 0xdfe8c8, fill: 0.15, fillColor: 0x8aa0a0 })
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap
 { const sun = lk.sun; sun.castShadow = true; const sz = isTouch ? 1024 : 2048; sun.shadow.mapSize.set(sz, sz); const c = sun.shadow.camera; c.left = -13; c.right = 13; c.top = 11; c.bottom = -11; c.near = 1; c.far = 45; c.updateProjectionMatrix(); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03 }
 const SUN_OFF = new THREE.Vector3(4, 12, 8)
@@ -181,14 +181,14 @@ const FONT = '"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans",sans
 
 // ---------- 店（奥に長い通路。左右に座敷）
 const world = new THREE.Group(); scene.add(world)
-const lanterns = [], plates = []
+const lanterns = [], plates = [], lights = []
 {
   const WL = W1 - W0, WC = (W0 + W1) / 2, WD = WALL_Z * 2
   // 床（板張り）
-  const ft = surfaceTex({ w: 512, h: 512, base: '#7a5236', noise: 0.05, grime: 0.08, repeat: [WL / 4, WD / 4], draw: (x, w, h) => { x.strokeStyle = 'rgba(40,22,10,.55)'; x.lineWidth = 3; for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(0, i * h / 4); x.lineTo(w, i * h / 4); x.stroke() } for (let i = 0; i < 4; i++) { const o = (i % 2) * w / 2; x.beginPath(); x.moveTo(o + w / 4, i * h / 4); x.lineTo(o + w / 4, (i + 1) * h / 4); x.stroke() } x.strokeStyle = 'rgba(255,220,170,.06)'; x.lineWidth = 1; for (let i = 0; i < 40; i++) { const y = Math.random() * h; x.beginPath(); x.moveTo(0, y); x.bezierCurveTo(w / 3, y + 4, w * 2 / 3, y - 4, w, y); x.stroke() } } })
+  const ft = surfaceTex({ w: 512, h: 512, base: '#4e3826', noise: 0.1, grime: 0.3, seed: 5, repeat: [WL / 4, WD / 4], draw: (x, w, h) => { x.strokeStyle = 'rgba(40,22,10,.55)'; x.lineWidth = 3; for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(0, i * h / 4); x.lineTo(w, i * h / 4); x.stroke() } for (let i = 0; i < 4; i++) { const o = (i % 2) * w / 2; x.beginPath(); x.moveTo(o + w / 4, i * h / 4); x.lineTo(o + w / 4, (i + 1) * h / 4); x.stroke() } x.strokeStyle = 'rgba(255,220,170,.06)'; x.lineWidth = 1; for (let i = 0; i < 40; i++) { const y = Math.random() * h; x.beginPath(); x.moveTo(0, y); x.bezierCurveTo(w / 3, y + 4, w * 2 / 3, y - 4, w, y); x.stroke() } } })
   const floor = mesh(new THREE.PlaneGeometry(WL, WD), std(0xffffff, { map: ft, roughness: 0.45 }), WC, 0, 0, world); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true
-  const tt = surfaceTex({ w: 256, h: 256, base: '#b8b06a', noise: 0.05, grime: 0.06, repeat: [WL / 1.8, 2], draw: (x, w, h) => { x.strokeStyle = 'rgba(80,80,30,.25)'; x.lineWidth = 1; for (let i = 0; i < w; i += 4) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, h); x.stroke() } x.fillStyle = '#2d3a26'; x.fillRect(0, 0, w, 10); x.fillRect(0, h - 10, w, 10) } })
-  const wt = surfaceTex({ w: 512, h: 256, base: '#e9dcc0', noise: 0.03, grime: 0.12, repeat: [WL / 6, 1] })
+  const tt = surfaceTex({ w: 256, h: 256, base: '#7d7647', noise: 0.1, grime: 0.28, seed: 9, repeat: [WL / 1.8, 2], draw: (x, w, h) => { x.strokeStyle = 'rgba(80,80,30,.25)'; x.lineWidth = 1; for (let i = 0; i < w; i += 4) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, h); x.stroke() } x.fillStyle = '#2d3a26'; x.fillRect(0, 0, w, 10); x.fillRect(0, h - 10, w, 10) } })
+  const wt = surfaceTex({ w: 512, h: 256, base: '#a89c80', noise: 0.08, grime: 0.32, edge: 0.4, repeat: [WL / 6, 1], seed: 3, draw: (x, w, h, rnd) => { for (let i = 0; i < 9; i++) { const cx = rnd() * w, cy = rnd() * h * 0.6, r = 12 + rnd() * 40; const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, 'rgba(70,52,20,.45)'); g.addColorStop(0.7, 'rgba(90,70,30,.25)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(cx - r, cy - r, r * 2, r * 2); x.fillStyle = 'rgba(60,45,20,.35)'; for (let k = 0; k < 3; k++) { const dx = cx + (rnd() - 0.5) * r; x.fillRect(dx, cy, 2 + rnd() * 3, r + rnd() * h * 0.5) } } x.strokeStyle = 'rgba(30,22,14,.5)'; x.lineWidth = 1.5; for (let i = 0; i < 4; i++) { let px = rnd() * w, py = rnd() * h; x.beginPath(); x.moveTo(px, py); for (let k = 0; k < 6; k++) { px += (rnd() - 0.5) * 40; py += rnd() * 30; x.lineTo(px, py) } x.stroke() } } })
   const wood = std(0x4a2e1a, { roughness: 0.55 }), woodD = std(0x2e1c10, { roughness: 0.5 })
   const za0 = 4.2, zaL = W1 - za0, zaC = (za0 + W1) / 2, zaD = WALL_Z - AISLE
   // 品書きの短冊（店名・銘柄は出さない）
@@ -196,7 +196,7 @@ const lanterns = [], plates = []
   const mt = canvasTex(1024, 256, (x, w, h) => {
     const n = menus.length, sw = w / n
     for (let i = 0; i < n; i++) {
-      x.fillStyle = i % 5 === 0 ? '#f6e7b0' : '#fbf3dc'; x.fillRect(i * sw + 4, 0, sw - 8, h)
+      if (i % 4 === 2) continue; x.fillStyle = i % 5 === 0 ? '#c9b98a' : '#d8cba4'; x.fillRect(i * sw + 4, 0, sw - 8, i % 3 === 1 ? h * 0.72 : h); x.fillStyle = 'rgba(90,70,30,.3)'; x.fillRect(i * sw + 4, h * 0.55, sw - 8, h * 0.45)
       x.fillStyle = '#2a1a10'; x.font = `900 ${sw * 0.6}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'top'
       const s = menus[i]; for (let k = 0; k < Math.min(s.length, 6); k++) x.fillText(s[k], i * sw + sw / 2, 8 + k * sw * 0.62)
       x.fillStyle = '#b5281c'; x.font = `900 ${sw * 0.32}px ${FONT}`; x.fillText(['380', '420', '400', '300', '480', '150', '420', '400', '300', '450', '350', '500', '380', '880'][i], i * sw + sw / 2, h - sw * 0.45)
@@ -213,7 +213,7 @@ const lanterns = [], plates = []
     mesh(new THREE.PlaneGeometry(WL, 4.4), std(0xffffff, { map: wt }), WC, 2.2, s * WALL_Z, world).rotation.y = face
     mesh(new THREE.BoxGeometry(WL, 1.1, 0.06), wood, WC, 0.9, s * (WALL_Z - 0.04), world)
     mesh(new THREE.BoxGeometry(WL, 0.12, 0.1), woodD, WC, 3.5, s * (WALL_Z - 0.06), world)
-    for (let x0 = 6 + (s > 0 ? 6 : 0); x0 < LEN; x0 += 12) mesh(new THREE.PlaneGeometry(8, 1.7), menuMat, x0 + 3, 2.6, s * (WALL_Z - 0.05), world).rotation.y = face
+    for (let x0 = 6 + (s > 0 ? 6 : 0); x0 < LEN; x0 += 12) { const m = mesh(new THREE.PlaneGeometry(8, 1.7), menuMat, x0 + 3, 2.6, s * (WALL_Z - 0.05), world); m.rotation.y = face; m.rotation.z = (x0 % 7 - 3) * 0.012 }
     // 同じ側の席の間に、柱と低い衝立（客の顔は隠さない高さ）
     for (let x = TX(s < 0 ? 0 : 1) - 3.2; x < LEN + 1; x += 6.4) {
       if (x < za0) continue
@@ -221,12 +221,14 @@ const lanterns = [], plates = []
       const sc = mesh(new THREE.BoxGeometry(0.08, 0.55, 1.5), std(0x6b4428, { roughness: 0.5 }), x, ZA_Y + 0.28, s * 4.15, world); sc.castShadow = true
     }
     // 提灯（通路の両脇の上）
-    const lanMat = lanterns.mat || (lanterns.mat = new THREE.MeshStandardMaterial({ color: 0xd8382a, emissive: 0xff4a2a, emissiveIntensity: 0.55, roughness: 0.6 }))
+    const lanMat = lanterns.mat || (lanterns.mat = new THREE.MeshStandardMaterial({ color: 0xb02a20, emissive: 0xff4a2a, emissiveIntensity: 0.45, roughness: 0.6 }))
     if (!lanMat.map) { const lanTex = canvasTex(256, 128, (x, w, h) => { x.fillStyle = '#d8382a'; x.fillRect(0, 0, w, h); x.strokeStyle = 'rgba(80,10,5,.45)'; x.lineWidth = 3; for (let i = 0; i < h; i += 10) { x.beginPath(); x.moveTo(0, i); x.lineTo(w, i); x.stroke() } x.fillStyle = '#1a0a05'; x.font = `900 70px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('酒', w * 0.25, h / 2); x.fillText('酒', w * 0.75, h / 2) }); lanMat.map = lanTex; lanMat.emissiveMap = lanTex }
     const capMat = std(0x1a1008)
     for (let x0 = 3 + (s > 0 ? 2.5 : 0); x0 < LEN; x0 += 5) {
       const g = new THREE.Group(); g.position.set(x0, 3.45, s * 1.25); world.add(g)
-      const b = mesh(new THREE.SphereGeometry(0.3, 20, 14), lanMat, 0, 0, 0, g); b.scale.y = 1.35
+      const k = lanterns.length, mode = k % 3 === 2 ? 'off' : k % 5 === 1 ? 'flick' : 'on'
+      const mat = mode === 'on' ? lanMat : mode === 'off' ? (lanterns.off || (lanterns.off = new THREE.MeshStandardMaterial({ color: 0x4a1612, map: lanMat.map, roughness: 0.8 }))) : lanMat.clone()
+      const b = mesh(new THREE.SphereGeometry(0.3, 10, 8), mat, 0, 0, 0, g); b.scale.y = 1.35; if (mode === 'flick') g.userData.flick = mat
       mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 16), capMat, 0, 0.41, 0, g); mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.08, 16), capMat, 0, -0.41, 0, g)
       mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 4), capMat, 0, 0.9, 0, g)
       lanterns.push(g)
@@ -243,7 +245,13 @@ const lanterns = [], plates = []
   const wc = canvasTex(256, 128, (x, w, h) => { x.fillStyle = '#1f2f55'; x.fillRect(0, 0, w, h); x.fillStyle = '#f4ecd8'; x.font = `900 64px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('お手洗い', w / 2, h / 2 + 4) })
   mesh(new THREE.PlaneGeometry(1.6, 0.8), new THREE.MeshStandardMaterial({ map: wc, roughness: 0.9 }), W1 - 0.12, 2.75, 0, world).rotation.y = -Math.PI / 2
   // 暖かい点光源
-  for (let x0 = 5; x0 < LEN; x0 += 10) { const pl = new THREE.PointLight(0xffa860, 9, 16, 1.6); pl.position.set(x0, 3.4, 0); world.add(pl) }
+  const tubeOn = new THREE.MeshStandardMaterial({ color: 0xe8f4e0, emissive: 0xd8ffe0, emissiveIntensity: 1.2 })
+  for (let x0 = 5, n = 0; x0 < LEN; x0 += 10, n++) {
+    const pl = new THREE.PointLight(n % 2 ? 0xffa860 : 0xcfe8c8, 8, 14, 1.6); pl.position.set(x0, 3.6, 0); world.add(pl)
+    const tm = n === 1 ? tubeOn.clone() : tubeOn, tube = mesh(new THREE.BoxGeometry(1.4, 0.07, 0.12), tm, x0, 4.18, 0, world)
+    mesh(new THREE.BoxGeometry(1.5, 0.05, 0.22), std(0x2a2a26), x0, 4.24, 0, world)
+    lights.push({ pl, tm, base: 8, bad: n === 1 || n === 3, ph: n * 1.7 })
+  }
   // カウンター（手前の端。通路をふさぐ向き）
   const cg = new THREE.Group(); world.add(cg)
   const ctop = std(0x9a6a3e, { roughness: 0.35 })
@@ -317,6 +325,7 @@ const _hp = new THREE.Vector3(), _q = new THREE.Vector3(), _w = new THREE.Vector
 function headPos(c, out) { if (c.head) c.head.getWorldPosition(out); else out.copy(c.g.position).setY(CH); return out.add(_q.set(0, 0.62, 0)) }
 
 // ---------- 主人公（一輪車）
+const lamp = new THREE.PointLight(0xffe6c0, 7, 10, 1.4); scene.add(lamp)   // 足元の明かり（暗くても障害物が見える）
 const P = { g: new THREE.Group(), body: new THREE.Group(), wheel: null, rider: null, tray: new THREE.Group(), cups: [] }
 scene.add(P.g); P.g.add(P.body)
 {
@@ -333,7 +342,7 @@ scene.add(P.g); P.g.add(P.body)
   // ペダル
   P.ped = new THREE.Group(); P.ped.position.y = WR; P.body.add(P.ped)
   mesh(new THREE.BoxGeometry(0.03, 0.03, 0.42), rim, 0, 0, 0, P.ped)
-  P.tray.position.set(0.1, SEAT + 0.5, 0.5); P.tray.scale.setScalar(1.0)
+  P.tray.position.set(0.1, SEAT + 0.74, -0.58); P.tray.scale.setScalar(1.0)   // 左肩。カメラは右後ろなので通路の先を隠さない
   P.body.add(P.tray)
   const tr = mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.05, 36), std(0x3a2a1e, { roughness: 0.3, metalness: 0.2 }), 0, 0, 0, P.tray); tr.scale.x = 0.75
   mesh(new THREE.TorusGeometry(0.62, 0.025, 6, 36), std(0x2a1d14, { roughness: 0.3 }), 0, 0.03, 0, P.tray).rotation.x = Math.PI / 2
@@ -872,7 +881,7 @@ function updateScene(dt) {
     // 手はトレーを支える位置に（腕を前へ）
   }
   // トレーの位置（体の前・頭の上）と揺れ
-  P.tray.position.set(0.1, SEAT + 0.5 + Math.sin(S.time * 7) * 0.01 * Math.abs(S.v), 0.5)
+  P.tray.position.set(0.1, SEAT + 0.74 + Math.sin(S.time * 7) * 0.01 * Math.abs(S.v), -0.58)
   P.tray.rotation.set(S.roll * 0.6, 0, -S.th * 0.4 + S.om * 0.03)
   for (const c of S.tray) { if (c.foam) c.foam.position.x = Math.sin(S.time * 9 + c.k * 5) * 0.004 * (1 + Math.abs(S.om)) }
   // 客
@@ -885,8 +894,13 @@ function updateScene(dt) {
   // のれん・提灯
   for (const g of lanterns) {
     if (g.userData.noren) { const near = Math.abs(S.x - g.position.x) < 0.6 && Math.abs(S.v) > 0.5; if (near) g.userData.flap = Math.max(g.userData.flap, Math.abs(S.v) / VMAX); g.userData.flap *= 0.97; g.children.forEach((p, i) => { if (p.userData.k !== undefined) p.rotation.x = Math.sin(S.time * 8 + i) * g.userData.flap * 0.6 }) }
-    else g.rotation.z = Math.sin(S.time * 1.3 + g.position.x) * 0.04
+    else { g.rotation.z = Math.sin(S.time * 1.3 + g.position.x) * 0.04; if (g.userData.flick) g.userData.flick.emissiveIntensity = (Math.sin(S.time * 23 + g.position.x) > 0.6 || Math.sin(S.time * 1.7) > 0.3) ? 0.45 : 0.03 }
   }
+  for (const L of lights) {
+    const t = S.time + L.ph, buzz = L.bad ? (Math.sin(t * 31) > 0.2 && Math.sin(t * 2.3) > -0.5 ? 1 : 0.08) : (Math.sin(t * 47) > 0.97 ? 0.4 : 1)
+    L.pl.intensity = L.base * buzz; if (L.bad) L.tm.emissiveIntensity = 1.2 * buzz
+  }
+  lamp.position.set(S.x + S.dir * 3, 1.5, 0)
   frameCamera(dt)
   // 太陽（影）を主人公に合わせて動かす
   lk.sun.target.position.set(S.x + S.dir * 5, 0, 0); lk.sun.position.copy(lk.sun.target.position).add(SUN_OFF); lk.sun.target.updateMatrixWorld()
@@ -907,7 +921,8 @@ function frameCamera(dt = 1) {
     camFace = snap ? S.face : camFace + d * clamp(dt * 4.5, 0, 1)
     const fx_ = Math.sin(camFace), fz_ = Math.cos(camFace), rx = -fz_, rz = fx_
     const dist = portrait ? 3.5 : 3.9, h = portrait ? 3.0 : 2.85, side = portrait ? 0.85 : 1.0
-    const t = S.mode === 'play' ? (S.order && S.order.showT > 0 ? S.order.t : stopped() ? nearTable() : null) : null
+    const nt = S.mode === 'play' && stopped() ? nearTable() : null
+    const t = S.mode === 'play' ? (S.order && S.order.showT > 0 ? S.order.t : nt && (nt.st === 'call' || (S.order && S.order.t === nt)) ? nt : null) : null   // 用のある席だけ覗く
     const want = t ? SIDE(t.i) * rz : 0
     peek = snap ? want : lerp(peek, want, clamp(dt * 3, 0, 1))
     const sd = side - peek * 0.35, ahead = 4.6 - Math.abs(peek) * 1.6, lk = portrait ? 1.1 : 1.6
@@ -1085,7 +1100,7 @@ function loop() {
   Snd.tick(); render()
 }
 function syncMute() { $('#icOn').hidden = Snd.muted; $('#icOff').hidden = !Snd.muted }
-function resize() { renderer.setSize(innerWidth, innerHeight, false); frameCamera(); fitSlip() }
+function resize() { renderer.setPixelRatio(lowRes()); renderer.setSize(innerWidth, innerHeight, false); frameCamera(); fitSlip() }
 
 // ---------- 起動
 clearObs(); applyLang(); syncMute(); resize()
