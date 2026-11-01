@@ -36,11 +36,13 @@ const S = {
   mode: 'title', time: 0, rand: Math.random, dbgPause: false,
   t: 0, x: 1.2, v: 0, acc: 0, y: 0, vy: 0, dir: 1, face: Math.PI / 2, th: 0, om: 0, wheelA: 0, heat: 0, turnQ: 0, turns: 0, roll: 0,
   inF: 0, inB: 0, keyF: 0, keyB: 0, jumpQ: 0, fallT: 0, falls: 0,
-  tray: [], order: null, tables: [], obs: [], drops: [], puddles: [],
+  tray: [], orders: [], tables: [], obs: [], drops: [], puddles: [],
   money: { cups: 0, wrong: 0, spill: 0, broken: 0, left: 0 },
   nextCall: 2, tut: store.get('tut') === '1' ? -1 : 0, served: 0, resT: 0, result: null, photo: null, photoScore: 0,
   bossT: 0, ended: false, lastSay: 0,
 }
+// S.order は先頭の注文（検証・自動プレイ・チュートリアル用の互換）
+Object.defineProperty(S, 'order', { get() { return S.orders[0] || null }, set(v) { S.orders = v ? [v] : [] } })
 const TT = () => D.T[S.lang]
 const R = () => S.rand()
 const pick = a => a[Math.floor(R() * a.length) % a.length]
@@ -550,7 +552,7 @@ function updateTables(dt) {
   if (S.nextCall <= 0 && S.t < D.SHIFT.sec - 8) {
     const idle = S.tables.filter(t => t.st === 'idle' && t.cust.length && Math.abs(t.x - S.x) > 3)
     if (idle.length && busy() < 1 + Math.floor(f * 2.6)) {
-      const first = S.served === 0 && !S.order && busy() === 0
+      const first = S.served === 0 && !S.orders.length && busy() === 0
       const t = first ? idle.reduce((a, b) => a.x < b.x ? a : b) : pick(idle)
       t.st = 'call'; t.wait = 0; t.callT = 0
     }
@@ -564,17 +566,17 @@ function updateTables(dt) {
     t.angry = t.wait > angryAt ? 1 : 0
     if (t.st === 'call' && t.callT <= 0 && caller) {
       const hot = t.angry
-      if (!(S.order && S.order.t === t && S.order.showT > 0)) bubble(caller, ((t.x - S.x) * S.dir < -1 ? T.behind + ' ' : '') + T.tableN.replace('{N}', t.i + 1) + ' ' + (hot ? pick(T.callAngry) : pick(T.call)), hot ? 'hot' : '', 1.8)
+      if (!showing()) bubble(caller, ((t.x - S.x) * S.dir < -1 ? T.behind + ' ' : '') + T.tableN.replace('{N}', t.i + 1) + ' ' + (hot ? pick(T.callAngry) : pick(T.call)), hot ? 'hot' : '', 1.8)
       play(caller, 'interact-right', 0.15)
       Snd.sfx('call', { hot }); t.callT = hot ? 2.2 : 3.2
     }
-    if (t.st === 'order' && t.angry && t.callT <= 0 && caller && !(S.order && S.order.showT > 0)) { bubble(caller, T.tableN.replace('{N}', t.i + 1) + ' ' + pick(T.callAngry), 'hot', 1.6); t.callT = 3.5 }
+    if (t.st === 'order' && t.angry && t.callT <= 0 && caller && !showing()) { bubble(caller, T.tableN.replace('{N}', t.i + 1) + ' ' + pick(T.callAngry), 'hot', 1.6); t.callT = 3.5 }
     if (caller && t.callT < 1.2 && caller.cur !== 'sit') play(caller, 'sit', 0.3)
     for (const c of t.cust) if (c.anger) { c.anger.visible = !!t.angry; if (c.anger.visible) { headPos(c, c.anger.position); c.anger.position.x += 0.25; c.anger.scale.setScalar(0.45 + Math.sin(S.time * 10) * 0.06) } }
     if (t.wait > lim) {
       // 帰る
       S.money.left++; bubble(caller, T.leave, 'hot', 2); Snd.sfx('leave')
-      if (S.order && S.order.t === t) { S.order = null }
+      S.orders = S.orders.filter(o => o.t !== t)
       t.st = 'gone'; t.leaveT = 0; bossSay(T.bossLeft, 2)
     }
   }
@@ -590,61 +592,76 @@ function updateTables(dt) {
   for (const t of S.tables) if (t.st === 'gone') { t.leaveT += dt; for (const c of t.cust) c.g.visible = t.leaveT < 1.2 ? Math.sin(t.leaveT * 30) > 0 : false; if (t.leaveT > 14) { t.st = 'idle'; t.wait = 0; for (const c of t.cust) { c.g.visible = true; if (c.anger) c.anger.visible = false } } }
 }
 function updateZones() {
-  const free = !S.order && !S.tray.length, play = S.mode === 'play'
+  const free = S.orders.length < MAXO, play = S.mode === 'play'
   for (const t of S.tables) {
-    const m = zoneMesh(t.i), on = !!(play && ((free && t.st === 'call') || (S.order && S.order.t === t && S.tray.length > 0)))   // visible は true/false 以外だと描かれてしまう
+    const m = zoneMesh(t.i), on = !!(play && ((free && t.st === 'call') || (orderOf(t) && S.tray.length > 0)))   // visible は true/false 以外だと描かれてしまう
     m.visible = on; if (!on) continue
     const inside = Math.abs(t.x - S.x) < 1.45; m.material = inside ? ZONE.in : ZONE.far
     m.scale.setScalar(inside ? 1 : 1 + Math.sin(S.time * 6) * 0.04)
   }
-  const c = zoneMesh(NT), on = play && S.order && !S.tray.length && !(S.order.showT > 0)
+  const c = zoneMesh(NT), on = play && S.orders.length > 0 && !S.tray.length && !showing()
   c.visible = !!on; if (on) { const inside = S.x < COUNTER_X + 0.6; c.material = inside ? ZONE.in : ZONE.far; c.scale.setScalar(inside ? 1 : 1 + Math.sin(S.time * 6) * 0.04) }
 }
 function nearTable() { let best = null; for (const t of S.tables) { const d = Math.abs(t.x - S.x); if (d < 1.45 && (!best || d < Math.abs(best.x - S.x))) best = t } return best }
 function stopped() { return Math.abs(S.v) < 1.6 && S.y <= 0.001 && S.fallT <= 0 }
+// 注文は同時に3席まで（本人: 3席まで同時に注文聞けるように）
+const MAXO = 3
+const orderOf = t => S.orders.find(o => o.t === t) || null
+const showing = () => S.orders.find(o => o.showT > 0) || null
+function needCount(orders) { const n = {}; for (const o of orders) for (const it of o.list) n[it.id] = (n[it.id] || 0) + it.n; return n }
 function updateService(dt) {
   const T = TT()
-  if (S.order) { S.order.showT -= dt; if (Math.abs(S.order.t.x - S.x) > 3) S.order.away = 1 }
+  for (const o of S.orders) { o.showT -= dt; o.noT = (o.noT || 0) - dt; if (Math.abs(o.t.x - S.x) > 3) o.away = 1 }
   if (!stopped()) return
   const t = nearTable()
-  if (t) {
-    if (t.st === 'call' && !S.order && !S.tray.length) {
-      // 注文を聞く（一瞬で消える）
-      const list = makeOrder(S.served === 0 && S.tut >= 0)
-      const n = orderCount(list), show = 2.4 + n * 0.35
-      S.order = { t, list, showT: show, asked: 1 }; t.st = 'order'; t.wait = 0; t.callT = show + 4
-      bubble(t.cust[0], orderHtml(list), 'order', show, true); play(t.cust[0], 'emote-yes', 0.15)
-      Snd.sfx('order'); bubble(P.rider, T.yorokonde, 'warm', 1.0)
-    } else if (t.st === 'order' && S.order && S.order.t === t) {
-      if (S.tray.length) serve(t)
-      else if (S.order.away && S.order.showT < 0) {
-        S.order.away = 0
-        // もう一回聞く（怒られる）
-        S.order.asked++; const n = orderCount(S.order.list), show = 1.8 + n * 0.3; S.order.showT = show
-        bubble(t.cust[0], `<b>${T.reAsk}</b><br>` + orderHtml(S.order.list).split('<br>').slice(1).join('<br>'), 'order', show, true); t.wait += 6; t.callT = show + 3
-        Snd.sfx('wrong')
-      }
+  if (!t) return
+  const o = orderOf(t)
+  if (t.st === 'call' && S.orders.length < MAXO && !showing()) {
+    // 注文を聞く（一瞬で消える）
+    const list = makeOrder(S.served === 0 && S.tut >= 0 && !S.orders.length)
+    const n = orderCount(list), show = 2.4 + n * 0.35
+    S.orders.push({ t, list, showT: show, asked: 1 }); t.st = 'order'; t.wait = 0; t.callT = show + 4
+    bubble(t.cust[0], orderHtml(list), 'order', show, true); play(t.cust[0], 'emote-yes', 0.15)
+    Snd.sfx('order'); bubble(P.rider, T.yorokonde, 'warm', 1.0)
+  } else if (t.st === 'order' && o) {
+    const want = needCount([o]), mine = S.tray.some(c => want[c.id])
+    const others = needCount(S.orders.filter(x => x !== o)), forOthers = S.tray.length && S.tray.every(c => others[c.id])
+    if (S.tray.length && (mine || !forOthers)) serve(t, o)
+    else if (S.tray.length && forOthers) { if (o.noT <= 0) { o.noT = 3; bubble(t.cust[0], T.notOurs, 'warm', 1.4) } }
+    else if (o.away && o.showT < 0 && !showing()) {
+      o.away = 0
+      // もう一回聞く（怒られる）
+      o.asked++; const n = orderCount(o.list), show = 1.8 + n * 0.3; o.showT = show
+      bubble(t.cust[0], `<b>${T.reAsk}</b><br>` + orderHtml(o.list).split('<br>').slice(1).join('<br>'), 'order', show, true); t.wait += 6; t.callT = show + 3
+      Snd.sfx('wrong')
     }
   }
 }
-function serve(t) {
-  const T = TT(), want = {}, got = {}
-  for (const o of S.order.list) want[o.id] = o.n
-  let spill = 0
-  for (const c of S.tray) { got[c.id] = (got[c.id] || 0) + 1; spill += 1 - c.fill }
-  let ok = 0, wrong = 0
-  for (const id of new Set([...Object.keys(want), ...Object.keys(got)])) { const a = want[id] || 0, b = got[id] || 0; ok += Math.min(a, b); wrong += Math.abs(a - b) }
+// その席が頼んだ物だけトレーから降ろす。足りない分・誰も頼んでいない余りは注文間違い
+function serve(t, o) {
+  const T = TT(), want = needCount([o])
+  let ok = 0, spill = 0
+  for (const id of Object.keys(want)) {
+    const cups = S.tray.filter(c => c.id === id).sort((a, b) => b.fill - a.fill).slice(0, want[id])
+    for (const c of cups) { ok++; spill += 1 - c.fill; c.g.removeFromParent(); S.tray.splice(S.tray.indexOf(c), 1) }
+  }
+  const missing = orderCount(o.list) - ok
+  S.orders = S.orders.filter(x => x !== o)
+  // 残りの注文に要らない余り
+  const need = needCount(S.orders), extra = []
+  for (const c of [...S.tray]) { if (need[c.id] > 0) need[c.id]--; else extra.push(c) }
+  for (const c of extra) { spill += 1 - c.fill; c.g.removeFromParent(); S.tray.splice(S.tray.indexOf(c), 1) }
+  layoutTray()
+  const wrong = missing + extra.length
   S.money.cups += ok; S.money.wrong += wrong; S.money.spill += spill
   const pos = P.tray.getWorldPosition(new THREE.Vector3())
   const caller = t.cust[0]
-  if (wrong) { bubble(caller, orderCount(S.order.list) > S.tray.length && !Object.keys(got).some(id => !want[id]) ? T.short : T.wrong, 'hot', 2); Snd.sfx('wrong'); play(caller, 'emote-no', 0.15); setTimeout(() => bossSay(T.bossWrong, 1.6), 600) }
+  if (wrong) { bubble(caller, extra.length ? T.wrong : T.short, 'hot', 2); Snd.sfx('wrong'); play(caller, 'emote-no', 0.15); setTimeout(() => bossSay(T.bossWrong, 1.6), 600) }
   else if (spill > 0.6) { bubble(caller, T.spilled, 'warm', 1.8); Snd.sfx('clink') }
   else { bubble(caller, T.kanpai, '', 1.8); Snd.sfx('kanpai'); for (const c of t.cust) play(c, 'emote-yes', 0.15); ono('¥' + (ok * D.YEN.perCup), pos, 'yel', { size: 34 }) }
-  if (!wrong && S.tray.length >= 6) photoMoment(2 + S.tray.length * 0.1)
-  // グラスを席へ（見た目だけ）
-  clearTray()
-  t.st = 'idle'; t.wait = 0; S.order = null; S.served++
-  if (S.tut >= 0) { S.tut = -1; store.set('tut', '1') }
+  if (!wrong && ok >= 6) photoMoment(2 + ok * 0.1)
+  t.st = 'idle'; t.wait = 0; S.served++
+  if (S.tut >= 0 && !S.orders.length) { S.tut = -1; store.set('tut', '1') }
 }
 function bossSay(text, life = 1.6) { if (BOSS.c) { bubble(BOSS.c, text, 'boss', life); Snd.sfx('boss') } }
 
@@ -694,7 +711,7 @@ function updateRider(dt) {
   else if (pedal) target = vr < 0 ? BRAKE : ACC
   else {
     // 止まりたい席（呼んでいる席・運び先）の前で指を離すと、そこでピタッと止まる
-    const nt = nearTable(), want = nt && (nt.st === 'call' || (S.order && S.order.t === nt)) && Math.abs(nt.x - S.x) < 1.2
+    const nt = nearTable(), want = nt && ((nt.st === 'call' && S.orders.length < MAXO) || orderOf(nt)) && Math.abs(nt.x - S.x) < 1.2
     const drag = want ? 11 : DRAG
     target = S.y > 0.001 ? 0 : -Math.sign(vr) * Math.min(Math.abs(vr) / dt, drag)  // 空中では減速しない
   }
@@ -858,7 +875,7 @@ function updateGame(dt) {
   S.bossT -= dt
   if (S.bossT <= 0) { S.bossT = 9 + R() * 6; if (busy() >= 2) bossSay(pick(TT().bossBusy)) }
   // カウンターの画面
-  const ac = atCounter() && (S.order || S.tray.length)
+  const ac = atCounter() && (S.orders.length || S.tray.length)
   if (ac !== !$('#counter').hidden) { $('#counter').hidden = !ac; if (ac) buildCounterUI() }
   if (S.t >= D.SHIFT.sec && !S.ended) endShift()
 }
@@ -944,7 +961,7 @@ function frameCamera(dt = 1) {
     const fx_ = Math.sin(camFace), fz_ = Math.cos(camFace), rx = -fz_, rz = fx_
     const dist = portrait ? 3.5 : 3.9, h = portrait ? 3.0 : 2.85, side = portrait ? 0.85 : 1.0
     const nt = S.mode === 'play' && stopped() ? nearTable() : null
-    const t = S.mode === 'play' ? (S.order && S.order.showT > 0 ? S.order.t : nt && (nt.st === 'call' || (S.order && S.order.t === nt)) ? nt : null) : null   // 用のある席だけ覗く
+    const t = S.mode === 'play' ? (showing() ? showing().t : nt && ((nt.st === 'call' && S.orders.length < MAXO) || orderOf(nt)) ? nt : null) : null   // 用のある席だけ覗く
     const want = t ? SIDE(t.i) * rz : 0
     peek = snap ? want : lerp(peek, want, clamp(dt * 3, 0, 1))
     const sd = side - peek * 0.35, ahead = 4.6 - Math.abs(peek) * 1.6, lk = portrait ? 1.1 : 1.6
@@ -999,7 +1016,7 @@ function buildMap() {
 }
 function updateMap() {
   const m = $('#map'); if (!m.firstChild) buildMap()
-  for (const t of S.tables) { const g = $('#mt' + t.i); if (g) g.setAttribute('class', 'mT ' + (t.st === 'call' ? 'call' : t.st === 'order' ? (S.order && S.order.t === t ? 'mine' : 'call') : t.st)) }
+  for (const t of S.tables) { const g = $('#mt' + t.i); if (g) g.setAttribute('class', 'mT ' + (t.st === 'call' ? 'call' : t.st === 'order' ? (orderOf(t) && orderOf(t).t === t ? 'mine' : 'call') : t.st)) }
   const me = $('#mMe'); if (me) me.setAttribute('transform', `translate(${MAP.x(S.x)},${MAP.H / 2}) scale(${S.dir})`)
 }
 function updateHud() {
@@ -1156,7 +1173,7 @@ window.IZ = {
     start(seed) { S.dbgPause = false; startRun(seed) },
     set(o) { Object.assign(S, o); if ('x' in o || 'dir' in o) { camInit = false; if ('dir' in o) S.face = S.dir > 0 ? Math.PI / 2 : -Math.PI / 2 } },
     call(i) { const t = S.tables[i]; t.st = 'call'; t.wait = 0; t.callT = 0; return t.x },
-    order(i, list) { const t = S.tables[i]; S.order = { t, list, showT: 0, asked: 1 }; t.st = 'order'; t.wait = 0 },
+    order(i, list, add) { const t = S.tables[i]; const o = { t, list, showT: 0, asked: 1 }; if (add) { S.orders = S.orders.filter(x => x.t !== t); S.orders.push(o) } else S.orders = [o]; t.st = 'order'; t.wait = 0 },
     tray(ids) { clearTray(); for (const id of ids) addCup(id) },
     obs(kind, x, o) { addObs(kind, x, o); return S.obs.length },
     clearObs() { clearObs() },
@@ -1176,7 +1193,7 @@ window.IZ = {
   state() {
     return {
       mode: S.mode, t: +S.t.toFixed(2), x: +S.x.toFixed(2), v: +S.v.toFixed(2), y: +S.y.toFixed(2), th: +S.th.toFixed(3), fallT: +S.fallT.toFixed(2), heat: +S.heat.toFixed(2), dir: S.dir, turns: S.turns, falls: S.falls, served: S.served,
-      tray: S.tray.map(c => ({ id: c.id, fill: +c.fill.toFixed(2) })), order: S.order ? { table: S.order.t.i, list: S.order.list, showT: +S.order.showT.toFixed(2) } : null,
+      tray: S.tray.map(c => ({ id: c.id, fill: +c.fill.toFixed(2) })), order: S.order ? { table: S.order.t.i, list: S.order.list, showT: +S.order.showT.toFixed(2) } : null, orders: S.orders.map(o => ({ table: o.t.i, list: o.list })),
       fallWhy: S.fallWhy, spillBy: S.spillBy, tables: S.tables.map(t => t.st), money: { ...S.money }, obs: S.obs.map(o => ({ k: o.kind, x: +o.x.toFixed(1) })), counter: !$('#counter').hidden, result: S.result ? { net: S.result.net, stamp: S.result.rank.st.ja } : null,
     }
   },

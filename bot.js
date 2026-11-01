@@ -1,17 +1,21 @@
 // 検証用の自動プレイ（本番では読まない）。IZBot.run(steps, { vcap, heatMax, jump, wrong, lean })
 window.IZBot = {
-  rest: false,
+  rest: false, loading: false,
   tick(o) {
     const S = IZ.S
     S.keyF = 0; S.keyB = 0
     if (S.mode !== 'play' || S.fallT > 0) return
     let target = null
-    if (!S.order) { const c = S.tables.filter(t => t.st === 'call'); if (c.length) target = c.reduce((a, b) => Math.abs(a.x - S.x) < Math.abs(b.x - S.x) ? a : b).x; else target = 6 }
+    const near = ts => ts.length ? ts.reduce((a, b) => Math.abs(a.x - S.x) < Math.abs(b.x - S.x) ? a : b) : null
+    const maxO = o.multi || 1, calls = S.tables.filter(t => t.st === 'call')
+    if (S.orders.some(x => x.showT > 0)) return
+    if (!S.tray.length && S.orders.length < maxO && calls.length && !(S.orders.length && this.loading)) target = near(calls).x
+    else if (!S.orders.length) target = 6
     else if (!S.tray.length) {
-      if (S.order.showT > 0) return
-      if (S.x < 2.4 && Math.abs(S.v) < 1.5) { for (const it of S.order.list) for (let k = 0; k < it.n; k++) { const id = o.wrong && Math.random() < o.wrong ? 'oolong' : it.id; const b = document.querySelector(`.dk[data-id="${id}"]`); if (b) b.click() } return }
+      this.loading = true
+      if (S.x < 2.4 && Math.abs(S.v) < 1.5) { for (const od of S.orders) for (const it of od.list) for (let k = 0; k < it.n; k++) { const id = o.wrong && Math.random() < o.wrong ? 'oolong' : it.id; const b = document.querySelector(`.dk[data-id="${id}"]`); if (b) b.click() } this.loading = false; return }
       target = 1.4
-    } else target = S.order.t.x
+    } else target = near(S.orders.map(x => x.t)).x
     const dx = target - S.x, dist = Math.abs(dx), vr = S.v * S.dir
     if (dist > 0.9 && Math.sign(dx) !== S.dir) { S.turnQ = 1; return }
     for (const b of S.obs) {
@@ -26,5 +30,5 @@ window.IZBot = {
     if (vr < vcap - 0.3 && !this.rest) S.keyF = 1
     else if (vr > vcap + 0.6) S.keyB = 1
   },
-  run(n, o = {}) { this.rest = false; for (let i = 0; i < n && IZ.S.mode === 'play'; i++) { this.tick(o); IZ.dbg.tick(1) } return IZ.state() },
+  run(n, o = {}) { this.rest = false; this.loading = false; for (let i = 0; i < n && IZ.S.mode === 'play'; i++) { this.tick(o); IZ.dbg.tick(1) } return IZ.state() },
 }
