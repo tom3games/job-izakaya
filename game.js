@@ -291,6 +291,16 @@ const lanterns = [], plates = [], lights = []
   }
 }
 
+// 止まる場所（光る床）。呼んでいる席・運び先・カウンター。中に入ると緑になる
+const zoneTex = (col) => canvasTex(256, 256, (x, w, h) => { x.fillStyle = col + '33'; x.fillRect(0, 0, w, h); x.strokeStyle = col; x.lineWidth = 18; x.setLineDash([34, 20]); x.strokeRect(12, 12, w - 24, h - 24); x.setLineDash([]); x.fillStyle = col; x.beginPath(); x.moveTo(w / 2 - 40, h / 2 - 30); x.lineTo(w / 2 + 40, h / 2 - 30); x.lineTo(w / 2, h / 2 + 34); x.closePath(); x.fill() })
+const ZONE = { far: null, in: null, list: [] }
+function zoneMesh(i) {
+  if (!ZONE.far) { const mk = c => new THREE.MeshBasicMaterial({ map: zoneTex(c), transparent: true, depthWrite: false, toneMapped: false, fog: false, polygonOffset: true, polygonOffsetFactor: -3 }); ZONE.far = mk('#ffc83d'); ZONE.in = mk('#5dff7a') }
+  if (!ZONE.list[i]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(i === NT ? 2.2 : 2.9, AISLE * 1.8), ZONE.far); m.rotation.x = -Math.PI / 2; m.position.set(i === NT ? 1.5 : TX(i), 0.012, 0); m.visible = false; world.add(m); ZONE.list[i] = m }
+  return ZONE.list[i]
+}
+for (let i = 0; i <= NT; i++) zoneMesh(i)
+
 // ---------- 人（Kenney Mini Characters, CC0）
 const MODELS = {}
 let charsReady = false
@@ -575,8 +585,20 @@ function updateTables(dt) {
     sp.position.y = sp.userData.y + (hot ? Math.abs(Math.sin(S.time * 6)) * 0.25 : 0)
     sp.scale.setScalar(hot ? 0.78 : t.st === 'order' ? 0.6 : 0.46)
   }
+  updateZones()
   // 帰った席はしばらくして新しい客
   for (const t of S.tables) if (t.st === 'gone') { t.leaveT += dt; for (const c of t.cust) c.g.visible = t.leaveT < 1.2 ? Math.sin(t.leaveT * 30) > 0 : false; if (t.leaveT > 14) { t.st = 'idle'; t.wait = 0; for (const c of t.cust) { c.g.visible = true; if (c.anger) c.anger.visible = false } } }
+}
+function updateZones() {
+  const free = !S.order && !S.tray.length, play = S.mode === 'play'
+  for (const t of S.tables) {
+    const m = zoneMesh(t.i), on = !!(play && ((free && t.st === 'call') || (S.order && S.order.t === t && S.tray.length > 0)))   // visible は true/false 以外だと描かれてしまう
+    m.visible = on; if (!on) continue
+    const inside = Math.abs(t.x - S.x) < 1.45; m.material = inside ? ZONE.in : ZONE.far
+    m.scale.setScalar(inside ? 1 : 1 + Math.sin(S.time * 6) * 0.04)
+  }
+  const c = zoneMesh(NT), on = play && S.order && !S.tray.length && !(S.order.showT > 0)
+  c.visible = !!on; if (on) { const inside = S.x < COUNTER_X + 0.6; c.material = inside ? ZONE.in : ZONE.far; c.scale.setScalar(inside ? 1 : 1 + Math.sin(S.time * 6) * 0.04) }
 }
 function nearTable() { let best = null; for (const t of S.tables) { const d = Math.abs(t.x - S.x); if (d < 1.45 && (!best || d < Math.abs(best.x - S.x))) best = t } return best }
 function stopped() { return Math.abs(S.v) < 1.6 && S.y <= 0.001 && S.fallT <= 0 }
@@ -1125,7 +1147,7 @@ loadChars().then(() => { $('#loading').hidden = true; setupRider(); setupTables(
 
 // ---------- 検証用の窓口
 window.IZ = {
-  S, Snd, D, camera, toScreen, xPost, calcResult, P,
+  S, Snd, D, camera, toScreen, xPost, calcResult, P, ZONE,
   get charsReady() { return charsReady && !!P.rider },
   dbg: {
     pause(b = true) { S.dbgPause = b },

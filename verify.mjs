@@ -90,9 +90,9 @@ await t('うしろ: 走っている時はブレーキ、止まってから押し
   expect(Math.abs(r.a.v) < 0.5 && r.b.v < -1 && r.b.v >= -1.81 && r.b.x < r.a.x && r.b.dir === 1 && Math.abs(r.v2) < 0.1, JSON.stringify(r)); return r })
 await t('こぎっぱなしだと後ろへ傾き、離すと戻る。こぎ続けると後ろに転ぶ', async () => {
   const r = await ev(p, () => {
-    IZ.dbg.clearObs(); IZ.dbg.set({ x: 2, v: 0, dir: 1, heat: 0, th: 0, om: 0, keyF: 1, falls: 0, fallWhy: [] }); IZ.dbg.step(240); const a = IZ.S.th
+    IZ.dbg.clearObs(); IZ.S.obs.length = 0; IZ.dbg.set({ x: 2, v: 0, dir: 1, heat: 0, th: 0, om: 0, keyF: 1, falls: 0, fallWhy: [] }); IZ.dbg.step(300); const a = IZ.S.th
     IZ.S.keyF = 0; IZ.dbg.step(90); const b = IZ.S.th
-    IZ.dbg.set({ x: 2, v: 0, heat: 0, th: 0, om: 0, keyF: 1 }); IZ.dbg.step(60 * 9); IZ.S.keyF = 0; const f = IZ.S.falls; IZ.dbg.step(130)
+    IZ.S.obs.length = 0; IZ.dbg.set({ x: 2, v: 0, heat: 0, th: 0, om: 0, keyF: 1 }); IZ.dbg.step(60 * 9); IZ.S.keyF = 0; const f = IZ.S.falls; IZ.dbg.step(130)
     return { lean2s: a, after: b, falls: f, why: IZ.S.fallWhy }
   })
   expect(r.lean2s < -0.15 && r.after > -0.08 && r.falls === 1, JSON.stringify(r)); return r })
@@ -129,6 +129,11 @@ await t('寝そべり客は通路をまたいで寝ていて、体の真ん中�
 await t('遅め（2.3m/s）でも寝そべり客をジャンプで越えられる', async () => {
   const r = await ev(p, () => { IZ.dbg.clearObs(); IZ.dbg.tray(['beer']); IZ.dbg.obs('sleep', 14); const ob = IZ.S.obs.at(-1); IZ.dbg.set({ x: 14 - ob.w - 0.22 - 0.25, v: 2.3, dir: 1, th: 0, om: 0, heat: 0 }); IZ.S.jumpQ = 0.1; IZ.dbg.step(60); const hit = ob.hit; IZ.dbg.clearObs(); return { hit, x: IZ.S.x } })
   expect(!r.hit && r.x > 14.7, JSON.stringify(r)); return r })
+await t('止まる場所: 呼んでいる席の床だけ光り、入ると緑。ほかの床は光らない', async () => {
+  const r = await ev(p, () => { IZ.S.order = null; IZ.dbg.tray([]); IZ.S.tables.forEach(t => { t.st = 'idle' }); IZ.dbg.step(2); const none = IZ.ZONE.list.filter(m => m.visible !== false).length
+    IZ.dbg.call(4); IZ.dbg.set({ x: IZ.S.tables[4].x - 6, v: 0, dir: 1 }); IZ.dbg.step(2); const one = IZ.ZONE.list.map((m, i) => m.visible === true ? i : -1).filter(i => i >= 0); const far = IZ.ZONE.list[4].material === IZ.ZONE.far
+    IZ.dbg.set({ x: IZ.S.tables[4].x - 0.8, v: 3 }); IZ.dbg.step(2); const inG = IZ.ZONE.list[4].material === IZ.ZONE.in; IZ.S.tables[4].st = 'idle'; IZ.S.order = null; IZ.dbg.tray([]); return { none, one, far, inG } })
+  expect(r.none === 0 && r.one.length === 1 && r.one[0] === 4 && r.far && r.inG, JSON.stringify(r)); return r })
 await t('後ろの席から呼ばれると「うしろ」と出て、見取り図の席が赤くなる', async () => {
   const r = await ev(p, () => { IZ.dbg.set({ x: 25, v: 0, dir: 1 }); const t = IZ.S.tables[1]; IZ.dbg.call(1); IZ.dbg.step(3); IZ.dbg.render(); window.dispatchEvent(new Event('resize')); return { bub: [...document.querySelectorAll('#fx .sb')].map(e => e.textContent).find(s => s.includes('2番')), map: document.querySelector('#mt1') && document.querySelector('#mt1').getAttribute('class') } })
   await p.waitForTimeout(100); const m = await ev(p, () => document.querySelector('#mt1').getAttribute('class'))
