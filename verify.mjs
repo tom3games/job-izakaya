@@ -111,8 +111,21 @@ await t('カウンター: 注文中に戻るとトレーの画面が出て、押
   const r = await ev(p, vis => ({ vis, tray: IZ.S.tray.map(c => c.id), badge: document.querySelector('.dk[data-id=beer] i').textContent, n: document.querySelector('#trayN').textContent }), vis)
   expect(r.vis && r.tray.length === 2 && r.badge === '2', JSON.stringify(r)); return r })
 await t('やり直しでトレーが空になる', async () => { await p.click('.dk[data-id=clear]'); const n = await ev(p, () => IZ.S.tray.length); expect(n === 0, n); await p.click('.dk[data-id=beer]'); await p.click('.dk[data-id=beer]') })
-await t('正しく運ぶと乾杯・杯数手当', async () => { const r = await ev(p, () => { const t = IZ.S.order.t; IZ.dbg.set({ x: t.x - 0.2, v: 0 }); IZ.dbg.step(4); return { served: IZ.S.served, m: IZ.S.money, tray: IZ.S.tray.length, st: t.st, tut: IZ.S.tut } }); expect(r.served === 1 && r.m.cups === 2 && r.m.wrong === 0 && r.tray === 0 && r.tut === -1, JSON.stringify(r)); return r })
-await t('違う物を運ぶと「頼んでない！」で注文間違い', async () => { const r = await ev(p, () => { IZ.dbg.order(3, [{ id: 'beer', n: 2 }, { id: 'hb', n: 1 }]); IZ.dbg.tray(['beer', 'oolong', 'oolong']); IZ.dbg.set({ x: IZ.S.tables[3].x, v: 0 }); IZ.dbg.step(3); return { m: IZ.S.money, bub: [...document.querySelectorAll('#fx .sb')].map(e => e.textContent).join('|') } }); expect(r.m.wrong === 4 && /頼んでない|足りひん/.test(r.bub), JSON.stringify(r)); return r })
+await t('正しく運ぶと乾杯・杯数手当', async () => { const r = await ev(p, () => { const t = IZ.S.order.t; IZ.dbg.set({ x: t.x - 0.2, v: 0 }); IZ.dbg.step(30); return { served: IZ.S.served, m: IZ.S.money, tray: IZ.S.tray.length, st: t.st, tut: IZ.S.tut } }); expect(r.served === 1 && r.m.cups === 2 && r.m.wrong === 0 && r.tray === 0 && r.tut === -1, JSON.stringify(r)); return r })
+await t('そろっていない注文は渡さず「まだ全部そろってへんで」（怒らない・減らさない）。そろえて渡すと、誰も頼んでない余りだけ注文間違い', async () => { const r = await ev(p, () => {
+  IZ.dbg.order(3, [{ id: 'beer', n: 2 }, { id: 'hb', n: 1 }]); IZ.dbg.tray(['beer', 'oolong', 'oolong']); IZ.dbg.set({ x: IZ.S.tables[3].x, v: 0 }); IZ.dbg.step(30)
+  const a = { wrong: IZ.S.money.wrong, tray: IZ.S.tray.length, bub: [...document.querySelectorAll('#fx .sb')].map(e => e.textContent).join('|') }
+  IZ.dbg.tray(['beer', 'beer', 'hb', 'oolong']); IZ.dbg.step(30)
+  return { a, wrong: IZ.S.money.wrong, tray: IZ.S.tray.length } })
+  expect(r.a.wrong === 0 && r.a.tray === 3 && /そろってへん/.test(r.a.bub) && r.wrong === 1 && r.tray === 0, JSON.stringify(r)); return r })
+await t('通り過ぎるだけでは渡さない・怒られない（運んでいる時は、ちゃんと止まった時だけ）', async () => { const r = await ev(p, () => {
+  IZ.dbg.noCalls(); IZ.dbg.noObs(); IZ.dbg.clearObs(); IZ.S.tables.forEach(t => { t.st = 'idle' }); IZ.S.orders.length = 0
+  const m0 = { ...IZ.S.money }, x4 = IZ.S.tables[4].x
+  IZ.dbg.order(4, [{ id: 'beer', n: 1 }], true); IZ.dbg.order(6, [{ id: 'hb', n: 1 }], true); IZ.dbg.tray(['beer', 'hb'])
+  IZ.dbg.set({ x: x4 - 3, v: 1.2, dir: 1, keyF: 0 }); for (let i = 0; i < 300 && IZ.S.x < x4 + 2; i++) { IZ.S.v = Math.max(IZ.S.v, 1.2); IZ.dbg.step(1) }
+  const r = { tray: IZ.S.tray.length, orders: IZ.S.orders.length, wrong: IZ.S.money.wrong - m0.wrong, cups: IZ.S.money.cups - m0.cups }
+  IZ.dbg.tray([]); IZ.S.orders.length = 0; IZ.S.tables.forEach(t => { t.st = 'idle' }); return r })
+  expect(r.tray === 2 && r.orders === 2 && r.wrong === 0 && r.cups === 0, JSON.stringify(r)); return r })
 await t('注文は3席まで同時に持てる。席ごとに自分の分だけ降ろし、よその分は「それうちのちゃう」', async () => {
   const r = await ev(p, () => {
     IZ.dbg.noCalls(); IZ.dbg.noObs(); IZ.dbg.clearObs(); IZ.S.tables.forEach(t => { t.st = 'idle' }); IZ.S.order = null
@@ -120,9 +133,9 @@ await t('注文は3席まで同時に持てる。席ごとに自分の分だけ�
     IZ.dbg.order(2, [{ id: 'beer', n: 2 }], true); IZ.dbg.order(5, [{ id: 'hb', n: 1 }, { id: 'oolong', n: 1 }], true); IZ.dbg.order(7, [{ id: 'beer', n: 1 }], true)
     IZ.dbg.call(8); IZ.dbg.set({ x: IZ.S.tables[8].x, v: 0, dir: 1 }); IZ.dbg.step(3); const fourth = IZ.S.orders.length
     IZ.dbg.tray(['beer', 'beer', 'hb', 'oolong', 'beer'])
-    IZ.dbg.set({ x: IZ.S.tables[5].x, v: 0 }); IZ.dbg.step(3); const a = { left: IZ.S.tray.map(c => c.id).sort().join(','), orders: IZ.S.orders.length }
+    IZ.dbg.set({ x: IZ.S.tables[5].x, v: 0 }); IZ.dbg.step(30); const a = { left: IZ.S.tray.map(c => c.id).sort().join(','), orders: IZ.S.orders.length }
     IZ.dbg.order(2, [{ id: 'beer', n: 2 }]); IZ.dbg.order(7, [{ id: 'hb', n: 1 }], true)
-    IZ.dbg.tray(['hb']); IZ.dbg.set({ x: IZ.S.tables[2].x - 0.1, v: 0 }); IZ.dbg.step(3); const notOurs = [...document.querySelectorAll('#fx .sb')].some(e => /うちのちゃう/.test(e.textContent)); const keep = IZ.S.orders.length
+    IZ.dbg.tray(['hb']); IZ.dbg.set({ x: IZ.S.tables[2].x - 0.1, v: 0 }); IZ.dbg.step(30); const notOurs = [...document.querySelectorAll('#fx .sb')].some(e => /うちのちゃう/.test(e.textContent)); const keep = IZ.S.orders.length
     IZ.S.tables[8].st = 'idle'; IZ.S.order = null; IZ.dbg.tray([])
     return { fourth, a, notOurs, keep, cups: IZ.S.money.cups - m0.cups, wrong: IZ.S.money.wrong - m0.wrong }
   })

@@ -604,6 +604,9 @@ function updateZones() {
 }
 function nearTable() { let best = null; for (const t of S.tables) { const d = Math.abs(t.x - S.x); if (d < 1.45 && (!best || d < Math.abs(best.x - S.x))) best = t } return best }
 function stopped() { return Math.abs(S.v) < 1.6 && S.y <= 0.001 && S.fallT <= 0 }
+// 席での受け渡しは「ちゃんと止まった」時だけ（2026-11-03 本人「通り過ぎる時に勝手に奪われる・そこに運びたかったわけじゃないのにキレられる」）
+function settled() { return Math.abs(S.v) < 0.7 && S.y <= 0.001 && S.fallT <= 0 }
+const DWELL = 0.35
 // 注文は同時に3席まで（本人: 3席まで同時に注文聞けるように）
 const MAXO = 3
 const orderOf = t => S.orders.find(o => o.t === t) || null
@@ -612,6 +615,8 @@ function needCount(orders) { const n = {}; for (const o of orders) for (const it
 function updateService(dt) {
   const T = TT()
   for (const o of S.orders) { o.showT -= dt; o.noT = (o.noT || 0) - dt; if (Math.abs(o.t.x - S.x) > 3) o.away = 1 }
+  const t0 = nearTable()
+  if (settled() && t0) { if (S.dwellT !== t0) { S.dwellT = t0; S.dwell = 0 } S.dwell = (S.dwell || 0) + dt } else { S.dwell = 0; S.dwellT = null }
   if (!stopped()) return
   const t = nearTable()
   if (!t) return
@@ -623,11 +628,16 @@ function updateService(dt) {
     S.orders.push({ t, list, showT: show, asked: 1 }); t.st = 'order'; t.wait = 0; t.callT = show + 4
     bubble(t.cust[0], orderHtml(list), 'order', show, true); play(t.cust[0], 'emote-yes', 0.15)
     Snd.sfx('order'); bubble(P.rider, T.yorokonde, 'warm', 1.0)
+  } else if (t.st === 'order' && o && S.tray.length && S.dwell < DWELL) {
+    // 運んでいる時は、ちゃんと止まるまで何もしない（通り過ぎで渡したり怒られたりしない）
   } else if (t.st === 'order' && o) {
     const want = needCount([o]), mine = S.tray.some(c => want[c.id])
-    const others = needCount(S.orders.filter(x => x !== o)), forOthers = S.tray.length && S.tray.every(c => others[c.id])
-    if (S.tray.length && (mine || !forOthers)) serve(t, o)
-    else if (S.tray.length && forOthers) { if (o.noT <= 0) { o.noT = 3; bubble(t.cust[0], T.notOurs, 'warm', 1.4) } }
+    const have = {}; for (const c of S.tray) have[c.id] = (have[c.id] || 0) + 1
+    const complete = Object.keys(want).every(id => (have[id] || 0) >= want[id])
+    // そろっている時だけ、この席の分だけ降ろす。足りない・よその分だけの時は降ろさず一言（怒らない・減らさない）
+    if (S.tray.length && complete) serve(t, o)
+    else if (S.tray.length && mine) { if (o.noT <= 0) { o.noT = 3; bubble(t.cust[0], T.notYet, 'warm', 1.4) } }
+    else if (S.tray.length) { if (o.noT <= 0) { o.noT = 3; bubble(t.cust[0], T.notOurs, 'warm', 1.4) } }
     else if (o.away && o.showT < 0 && !showing()) {
       o.away = 0
       // もう一回聞く（怒られる）
@@ -647,9 +657,9 @@ function serve(t, o) {
   }
   const missing = orderCount(o.list) - ok
   S.orders = S.orders.filter(x => x !== o)
-  // 残りの注文に要らない余り
+  // 誰も頼んでいない余りは、注文が全部片付いた時だけ注文間違いにする（まだ他の席の注文が残っていれば、持ったままでよい）
   const need = needCount(S.orders), extra = []
-  for (const c of [...S.tray]) { if (need[c.id] > 0) need[c.id]--; else extra.push(c) }
+  if (!S.orders.length) for (const c of [...S.tray]) { if (need[c.id] > 0) need[c.id]--; else extra.push(c) }
   for (const c of extra) { spill += 1 - c.fill; c.g.removeFromParent(); S.tray.splice(S.tray.indexOf(c), 1) }
   layoutTray()
   const wrong = missing + extra.length
