@@ -13,7 +13,7 @@ for (const [name, bt, opts] of [['chromium', chromium, {}], ['webkit', webkit, {
   await p.goto(URL0 + '?t=' + Date.now(), { waitUntil: 'networkidle' })
   await p.waitForFunction(() => window.__izReady && IZ.charsReady, null, { timeout: 15000 })
   await p.click('#bStart'); await p.waitForTimeout(400)
-  const flow = await p.evaluate(() => { IZ.dbg.pause(true); IZ.dbg.noCalls(); IZ.dbg.noObs(); IZ.S.tut = -1; IZ.dbg.call(0); IZ.dbg.set({ x: IZ.S.tables[0].x }); IZ.dbg.step(5); const o = IZ.S.order && IZ.S.order.list; IZ.dbg.set({ x: 1.3 }); IZ.dbg.step(5); for (const it of o) for (let k = 0; k < it.n; k++) document.querySelector(`.dk[data-id=${it.id}]`).click(); IZ.dbg.set({ x: IZ.S.tables[0].x }); IZ.dbg.step(5); const served = IZ.S.served; IZ.dbg.end(); IZ.dbg.step(200); return { o, served } })
+  const flow = await p.evaluate(() => { IZ.dbg.pause(true); IZ.dbg.noCalls(); IZ.dbg.noObs(); IZ.S.tut = -1; IZ.dbg.call(0); IZ.dbg.set({ x: IZ.S.tables[0].x }); IZ.dbg.step(5); const o = IZ.S.order && IZ.S.order.list; IZ.dbg.set({ x: 1.3 }); IZ.dbg.step(5); for (const it of o) for (let k = 0; k < it.n; k++) document.querySelector(`.dk[data-id=${it.id}]`).click(); IZ.dbg.set({ x: IZ.S.tables[0].x, v: 0 }); IZ.dbg.step(40); const served = IZ.S.served; IZ.dbg.end(); IZ.dbg.step(200); return { o, served } })
   await p.waitForTimeout(600); await p.evaluate(() => { IZ.dbg.reveal(); IZ.dbg.step(5) })
   const res = await p.evaluate(() => ({ mode: IZ.S.mode, net: IZ.S.result && IZ.S.result.net }))
   out.push(`${name}: flow=${JSON.stringify(flow)} result=${JSON.stringify(res)}`)
