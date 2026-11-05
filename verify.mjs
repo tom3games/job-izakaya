@@ -51,7 +51,8 @@ const variance = (p, sel) => p.evaluate(sel => {
   let s = 0, s2 = 0, n = 0; for (let i = 0; i < d.length; i += 4 * 13) { const v = d[i] * .3 + d[i + 1] * .59 + d[i + 2] * .11; s += v; s2 += v * v; n++ }
   return Math.round(s2 / n - (s / n) ** 2)
 }, sel)
-const SIZES = [[360, 640, 'small'], [390, 844, 'phone'], [844, 390, 'land'], [667, 375, 'land-se'], [768, 1024, 'tab'], [1440, 900, 'pc']]
+// スマホ縦だけ（横持ち・PC は本人が言った時だけ。2026-11-03）
+const SIZES = [[360, 640, 'small'], [390, 844, 'phone'], [430, 932, 'large']]
 
 const browser = await chromium.launch(MUTE_LAUNCH)
 const p = await open(browser)
@@ -92,8 +93,8 @@ await t('こぎっぱなしだと後ろへ傾き、離すと戻る。こぎ続�
   const r = await ev(p, () => {
     IZ.dbg.clearObs(); IZ.S.obs.length = 0; IZ.dbg.set({ x: 2, v: 0, dir: 1, heat: 0, th: 0, om: 0, keyF: 1, falls: 0, fallWhy: [] }); IZ.dbg.step(300); const a = IZ.S.th
     IZ.S.keyF = 0; IZ.dbg.step(150); const b = IZ.S.th
-    IZ.S.obs.length = 0; IZ.dbg.set({ x: 2, v: 0, heat: 0, th: 0, om: 0, keyF: 1 }); IZ.dbg.step(60 * 9); IZ.S.keyF = 0; const f = IZ.S.falls; IZ.dbg.step(130)
-    return { lean2s: a, after: b, falls: f, why: IZ.S.fallWhy }
+    IZ.S.obs.length = 0; IZ.dbg.set({ x: 2, v: 0, heat: 0, th: 0, om: 0, keyF: 1 }); let n = 0; for (; n < 60 * 14 && !IZ.S.falls; n += 10) IZ.dbg.step(10); IZ.S.keyF = 0; const f = IZ.S.falls, sec = n / 60; IZ.dbg.step(130)
+    return { lean2s: a, after: b, falls: f, why: IZ.S.fallWhy, sec }
   })
   expect(r.lean2s < -0.15 && r.after > -0.08 && r.falls === 1, JSON.stringify(r)); return r })
 await t('Uターン: 速いときは止まってから向きを変える', async () => {
@@ -168,6 +169,30 @@ await t('後ろの席から呼ばれると「うしろ」と出て、見取り�
 await t('転倒: グラスは全部割れて減給、しばらくして起き上がる', async () => { const r = await ev(p, () => { IZ.dbg.tray(['beer', 'hb', 'hb']); const b0 = IZ.S.money.broken; IZ.dbg.fall(); const a = { broken: IZ.S.money.broken - b0, tray: IZ.S.tray.length, falls: IZ.S.falls }; IZ.dbg.step(130); return { ...a, up: IZ.S.fallT <= 0 } }); expect(r.broken === 3 && r.tray === 0 && r.falls >= 1 && r.up, JSON.stringify(r)); return r })
 await t('待たせすぎると客が帰る（1組で1回だけ数える）', async () => { const r = await ev(p, () => { IZ.dbg.set({ x: 2, v: 0, dir: 1 }); const l0 = IZ.S.money.left; const t = IZ.S.tables[6]; t.st = 'call'; t.wait = 49.9; IZ.dbg.step(30); return { left: IZ.S.money.left - l0, st: t.st } }); expect(r.left === 1 && r.st === 'gone', JSON.stringify(r)); return r })
 await t('音: BGM と効果音が呼ばれている（鳴らさず回数で）', async () => { const r = await ev(p, () => ({ calls: window.__soundCalls || 0, played: IZ.Snd.played })); expect(r.calls > 0 && r.played['call'] > 0 && r.played['crash'] > 0 && r.played['clink'] >= 0, JSON.stringify(r)); return r })
+await t('乾杯: 席で渡すと客がグラスを当てて泡が飛び、飲み干して消える（運んだ分だけ）', async () => {
+  const r = await ev(p, () => {
+    IZ.dbg.clearObs(); IZ.dbg.noObs(); IZ.dbg.noCalls(); const i = 7, x = IZ.S.tables[i].x
+    IZ.dbg.order(i, [{ id: 'beer', n: 4 }, { id: 'hb', n: 2 }]); IZ.dbg.tray(['beer', 'beer', 'beer', 'beer', 'hb', 'hb']); IZ.dbg.set({ x, dir: 1, v: 0, fallT: 0 }); IZ.dbg.step(30)
+    const a = IZ.dbg.toastInfo(), k0 = IZ.Snd.played.kanpai || 0, sc0 = IZ.S.scene
+    IZ.dbg.step(30); const b = IZ.dbg.toastInfo(), k1 = IZ.Snd.played.kanpai || 0
+    IZ.dbg.step(120); const c = IZ.dbg.toastInfo()
+    return { a, b, c, sound: k1 - k0, cups: IZ.S.tray.length }
+  })
+  expect(r.a && r.a.n === 6 && !r.a.rung && r.b && r.b.rung && r.b.fill.every(f => f < 1) && r.c === null && r.sound === 1 && r.cups === 0, JSON.stringify(r)); return r.b.fill
+})
+await t('乾杯: 間違えた注文では乾杯しない', async () => {
+  const r = await ev(p, () => { const i = 8, x = IZ.S.tables[i].x; IZ.dbg.order(i, [{ id: 'beer', n: 1 }]); IZ.dbg.tray(['beer', 'hb']); IZ.dbg.set({ x, dir: 1, v: 0, fallT: 0 }); IZ.dbg.step(40); const a = IZ.dbg.toastInfo(); IZ.dbg.step(10); return { a, tray: IZ.S.tray.length, st: IZ.S.tables[i].st } })
+  expect(r.a === null, JSON.stringify(r)); await ev(p, () => { IZ.dbg.tray([]); IZ.S.orders = [] }); return r
+})
+await t('酔っ払い: 立つと通路で腕を広げてふらつき、席に戻ると元に戻る', async () => {
+  const r = await ev(p, () => { IZ.dbg.clearObs(); const i = 3; IZ.S.tables[i].st = 'idle'; IZ.dbg.set({ x: IZ.S.tables[i].x - 6, v: 0, dir: 1 }); IZ.dbg.stand(i); IZ.dbg.step(50); const a = IZ.dbg.drunk(); IZ.dbg.step(17); const b = IZ.dbg.drunk(); const c = IZ.S.tables[i].cust[1]; IZ.dbg.step(260); return { a, b, after: { open: c.armOpen, flush: c.flush, rz: c.g.rotation.z, standing: IZ.S.tables[i].standing } } })
+  expect(r.a.open === 1 && Math.abs(r.a.armL[0]) > 1 && Math.abs(r.a.armL[2]) > 0.4 && r.a.flush === 1 && r.a.z !== r.b.z && r.after.open === 0 && r.after.flush === 0 && r.after.rz === 0 && !r.after.standing, JSON.stringify(r)); return r.a
+})
+await t('音: 録音素材が読み込まれ、無音のまま（__muteOk・合成の関数なし）', async () => {
+  await p.waitForFunction(() => Object.values(IZ.Snd.bufs).filter(b => b && b !== 'loading').length >= 20, null, { timeout: 15000 })
+  const r = await ev(p, () => ({ ok: window.__muteOk(), tone: typeof IZ.Snd.tone, amb: !!IZ.Snd.loops.amb, bgm: !!IZ.Snd.loops.bgm }))
+  expect(r.ok && r.tone === 'undefined' && r.amb && r.bgm, JSON.stringify(r)); return r
+})
 await t('終業 → 給料明細（ハンコ・手取り・Xの本文）', async () => {
   await ev(p, () => { IZ.dbg.end(); IZ.dbg.step(200) }); await p.waitForTimeout(400); await ev(p, () => { IZ.dbg.reveal(); IZ.dbg.step(10) })
   const r = await ev(p, () => ({ mode: IZ.S.mode, vis: !document.querySelector('#vResult').hidden, net: IZ.S.result.net, x: IZ.xPost(), btn: document.querySelector('#rBtns2').classList.contains('on') }))
@@ -213,6 +238,7 @@ await t('WebKit: 2本指の touchmove を止める', async () => {
   const r = await wp.evaluate(() => { const e = new Event('touchmove', { cancelable: true, bubbles: true }); Object.defineProperty(e, 'touches', { value: [{}, {}] }); document.body.dispatchEvent(e); return e.defaultPrevented })
   expect(r, r)
 })
+await t('WebKit: 無音のまま（__muteOk）', async () => { const r = await wp.evaluate(() => ({ ok: window.__muteOk(), ctx: IZ.Snd.ctx && IZ.Snd.ctx.state, bufs: Object.keys(IZ.Snd.bufs).length })); expect(r.ok && r.ctx !== 'running', JSON.stringify(r)); return r })
 await t('WebKit: エラーなし', async () => { expect(wp.errs.length === 0, wp.errs.join('|')) })
 await wb.close()
 server.kill()

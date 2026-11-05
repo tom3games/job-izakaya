@@ -1,0 +1,34 @@
+- snd/tap.mp3: Interface Sounds / Kenney / CC0
+- snd/clink1.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/clink2.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/clink3.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/pour.mp3: 100 CC0 SFX 2 / rubberduck / CC0
+- snd/splash1.mp3: 100 CC0 SFX #2 / rubberduck / CC0
+- snd/splash2.mp3: 100 CC0 SFX #2 / rubberduck / CC0
+- snd/splash3.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/crash1.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/crash2.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/crash3.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/jump1.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/jump2.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/land1.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/land2.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/bump1.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/bump2.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/grunt1.mp3: Little Grunts / crueltyinc / CC0
+- snd/grunt2.mp3: Little Grunts / crueltyinc / CC0
+- snd/grunt3.mp3: Little Grunts / crueltyinc / CC0
+- snd/order1.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/order2.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/ok.mp3: Bell dings/chimes / PWL / CC0
+- snd/kanpai1.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/kanpai2.mp3: 100 CC0 SFX / rubberduck / CC0
+- snd/wrong.mp3: Interface Sounds / Kenney / CC0
+- snd/leave.mp3: 50 RPG sound effects / Kenney / CC0
+- snd/end.mp3: 85 Short music jingles / Kenney / CC0
+- snd/stamp.mp3: 75 CC0 breaking / falling / hit sfx / rubberduck / CC0
+- snd/squeak1.mp3: 50 RPG sound effects / Kenney / CC0
+- snd/squeak2.mp3: 50 RPG sound effects / Kenney / CC0
+- snd/squeak3.mp3: 50 RPG sound effects / Kenney / CC0
+- snd/bgm.mp3: Hot Springs Town / Kistol / CC0
+- snd/amb_crowd.mp3: Crowd Shouting/Speaking Ambience / StarNinjas / CC0

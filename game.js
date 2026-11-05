@@ -47,116 +47,38 @@ const TT = () => D.T[S.lang]
 const R = () => S.rand()
 const pick = a => a[Math.floor(R() * a.length) % a.length]
 
-// ---------- 音（WebAudio だけ）
-const Snd = {
-  ctx: null, muted: store.get('mute') === '1', next: 0, step: 0, track: null, want: null, switchAt: 0, played: {}, busy: 0,
-  TEMPO: { title: 112, play: 128, end: 96 },
-  init() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return }
-    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return
-    try {
-      const c = this.ctx = new AC()
-      this.master = c.createGain(); this.master.gain.value = this.muted ? 0 : 0.8; this.master.connect(c.destination)
-      this.bgm = c.createGain(); this.bgm.gain.value = 0.0001; this.bgm.connect(this.master)
-      const len = c.sampleRate * 2; this.noiseBuf = c.createBuffer(1, len, c.sampleRate)
-      const d = this.noiseBuf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1
-      if (this.want) { const w = this.want; this.want = null; this.setTrack(w) }
-    } catch (e) { this.ctx = null }
+// ---------- 音（録音素材だけ。合成音は使わない。エンジンは sfx.js、出所は CREDITS.md）
+const sf = (pre, n) => Array.from({ length: n }, (_, i) => `snd/${pre}${i + 1}.mp3`)
+Snd.muted = store.get('mute') === '1'
+Snd.def({
+  tap: 'snd/tap.mp3', clink: sf('clink', 3), pour: 'snd/pour.mp3', splash: sf('splash', 3), crash: sf('crash', 3), jump: sf('jump', 2), land: sf('land', 2), bump: sf('bump', 2),
+  call: sf('grunt', 3), order: sf('order', 2), ok: 'snd/ok.mp3', kanpai: sf('kanpai', 2), wrong: 'snd/wrong.mp3', boss: sf('grunt', 3), yorokonde: sf('grunt', 3), leave: 'snd/leave.mp3', end: 'snd/end.mp3', stamp: 'snd/stamp.mp3', squeak: sf('squeak', 3),
+})
+const SND_TRACKS = { title: ['snd/bgm.mp3', 0.2, 1], play: ['snd/bgm.mp3', 0.2, 1], end: ['snd/bgm.mp3', 0.14, 0.82] }
+Object.assign(Snd, {
+  want: null, busy: 0, _init: Snd.init, _setMute: Snd.setMute,
+  init() { const first = !this.ctx; this._init(); if (first && this.ctx) { this.loop('amb', 'snd/amb_crowd.mp3', 0.16, 1); this.applyTrack() } },
+  setMute(m) { this._setMute(m); store.set('mute', m ? '1' : '0') },
+  setTrack(name) { if (this.want === name) return; this.want = name; this.applyTrack() },
+  applyTrack() {
+    if (!this.ctx) return
+    const t = this.want && SND_TRACKS[this.want]; this.loop('bgm', t ? t[0] : null, t ? t[1] : 0, 0.3)
+    if (t) this.played['bgm:' + this.want] = (this.played['bgm:' + this.want] || 0) + 1
   },
-  setMute(m) { this.muted = m; store.set('mute', m ? '1' : '0'); if (this.master) this.master.gain.value = m ? 0 : 0.8 },
-  mtof: m => 440 * Math.pow(2, (m - 69) / 12),
-  mark(n) { this.played[n] = (this.played[n] || 0) + 1 },
-  tone(f, t0, dur, type = 'square', vol = 0.2, dest, f2) {
-    if (!this.ctx) return; const c = this.ctx, o = c.createOscillator(), g = c.createGain()
-    o.type = type; o.frequency.setValueAtTime(f, t0); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur)
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
-    o.connect(g); g.connect(dest || this.master); o.start(t0); o.stop(t0 + dur + 0.02)
-  },
-  noise(t0, dur, vol, freq, type = 'highpass', dest, q) {
-    if (!this.ctx) return; const c = this.ctx, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain()
-    s.buffer = this.noiseBuf; f.type = type; f.frequency.value = freq; if (q) f.Q.value = q
-    g.gain.setValueAtTime(Math.max(0.0002, vol), t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
-    s.connect(f); f.connect(g); g.connect(dest || this.master); s.start(t0, Math.random()); s.stop(t0 + dur + 0.02)
-  },
-  voice(f, t0, dur, vol, formant = 900, f2) {
-    if (!this.ctx) return; const c = this.ctx, o = c.createOscillator(), bp = c.createBiquadFilter(), g = c.createGain()
-    o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t0); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur)
-    bp.type = 'bandpass'; bp.frequency.value = formant; bp.Q.value = 3
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02); g.gain.setValueAtTime(vol, t0 + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
-    o.connect(bp); bp.connect(g); g.connect(this.master); o.start(t0); o.stop(t0 + dur + 0.02)
-  },
-  setTrack(name) {
-    if (this.want === name) return
-    this.want = name; if (!this.ctx) return
-    const now = this.ctx.currentTime, g = this.bgm.gain
-    g.cancelScheduledValues(now); g.setValueAtTime(Math.max(0.0001, g.value), now); g.linearRampToValueAtTime(0.0001, now + 0.25)
-    this.switchAt = now + 0.27
-  },
-  tick() {
-    if (!this.ctx) return; const c = this.ctx
-    if (this.switchAt && c.currentTime >= this.switchAt) {
-      this.track = this.want; this.step = 0; this.next = c.currentTime + 0.05; this.switchAt = 0
-      const g = this.bgm.gain; g.cancelScheduledValues(c.currentTime); g.setValueAtTime(0.0001, c.currentTime); g.linearRampToValueAtTime(0.32, c.currentTime + 0.35)
-      if (this.track) this.mark('bgm:' + this.track)
-    }
-    if (!this.track || this.switchAt) return
-    const spb = 60 / (this.TEMPO[this.track] * (this.track === 'play' ? 1 + this.busy * 0.18 : 1)) / 4
-    if (this.next < c.currentTime) this.next = c.currentTime + 0.05
-    while (this.next < c.currentTime + 0.25) { this['p_' + this.track](this.step, this.next); this.next += spb; this.step++ }
-  },
-  pluck(n, t, dur = 0.25, vol = 0.08) { this.tone(this.mtof(n), t, dur, 'triangle', vol, this.bgm); this.tone(this.mtof(n) * 2.01, t, dur * 0.4, 'square', vol * 0.18, this.bgm) },
-  taiko(t, v = 0.3) { this.tone(110, t, 0.22, 'sine', v, this.bgm, 55); this.noise(t, 0.05, v * 0.25, 500, 'lowpass', this.bgm) },
-  clap(t, v = 0.06) { this.noise(t, 0.06, v, 1800, 'bandpass', this.bgm, 1.4) },
-  // 都節（ミ ファ ラ シ ド）っぽい祭り囃子
-  p_title(i, t) {
-    const s = i % 16, bar = Math.floor(i / 16) % 4
-    if (s === 0 || s === 10) this.taiko(t, 0.26); if (s === 4 || s === 12) this.clap(t)
-    const m = [[64, -1, 65, -1, 69, -1, 71, -1, 72, -1, 71, -1, 69, -1, -1, -1], [69, -1, 71, -1, 72, -1, 76, -1, 74, -1, 72, -1, 71, -1, -1, -1],
-      [72, -1, 71, -1, 69, -1, 65, -1, 64, -1, 65, -1, 69, -1, -1, -1], [71, -1, 69, -1, 65, -1, 64, -1, 64, -1, -1, -1, -1, -1, -1, -1]][bar]
-    if (m[s] > 0) this.pluck(m[s], t, 0.3, 0.08)
-    if (s % 8 === 0) this.pluck([40, 45, 41, 40][bar], t, 0.5, 0.12)
-  },
-  p_play(i, t) {
-    const s = i % 16, bar = Math.floor(i / 16) % 4, b = this.busy
-    if (s === 0 || s === 6 || s === 10) this.taiko(t, 0.24 + b * 0.08); if (s === 4 || s === 12) this.clap(t, 0.05 + b * 0.04)
-    if (b > 0.5 && s % 2 === 1) this.noise(t, 0.02, 0.025, 7000, 'highpass', this.bgm)
-    const m = [[64, -1, 69, 71, 72, -1, 71, 69, 71, -1, 69, -1, 65, -1, 64, -1], [69, -1, 72, 76, 74, -1, 72, 71, 72, -1, 71, -1, 69, -1, -1, -1],
-      [76, -1, 74, 72, 71, -1, 69, -1, 71, -1, 72, 71, 69, -1, 65, -1], [64, -1, 65, 69, 71, -1, 69, 65, 64, -1, -1, -1, 64, -1, -1, -1]][bar]
-    if (m[s] > 0) this.pluck(m[s], t, 0.2, 0.07)
-    if (s % 4 === 0) this.pluck([40, 45, 47, 40][bar] + (s === 8 ? 7 : 0), t, 0.3, 0.1)
-  },
-  p_end(i, t) {
-    const s = i % 16
-    if (s === 0) this.taiko(t, 0.2)
-    const m = [76, -1, -1, 74, -1, -1, 72, -1, 71, -1, -1, -1, 69, -1, -1, -1]
-    if (m[s] > 0 && Math.floor(i / 16) % 2 === 0) this.pluck(m[s], t, 0.6, 0.07)
-  },
+  // 忙しいほど曲が速くなる
+  tick() { const l = this.loops.bgm; if (l && l.node) l.node.playbackRate.value = (SND_TRACKS[this.want] || [0, 0, 1])[2] * (this.want === 'play' ? 1 + this.busy * 0.18 : 1) },
   sfx(n, o = {}) {
-    if (!this.ctx) return; this.mark(n)
-    const t = this.ctx.currentTime + 0.01
-    switch (n) {
-      case 'tap': this.tone(900, t, 0.05, 'square', 0.07); break
-      case 'clink': this.tone(2600 + Math.random() * 400, t, 0.18, 'sine', 0.12); this.tone(3900, t, 0.1, 'sine', 0.05); break
-      case 'pour': this.noise(t, 0.35, 0.12, 1500, 'bandpass', null, 2); this.tone(300, t, 0.3, 'sine', 0.04, null, 600); break
-      case 'splash': for (let k = 0; k < 3; k++) this.noise(t + k * 0.05, 0.12, 0.14 * (o.v ?? 1), 900 + k * 500, 'bandpass', null, 4); break
-      case 'crash': for (let k = 0; k < 6; k++) { this.noise(t + k * 0.04, 0.18, 0.3, 3000 + k * 600, 'highpass'); this.tone(2200 + k * 500, t + k * 0.04, 0.2, 'sine', 0.06) } this.noise(t, 0.4, 0.4, 300, 'lowpass'); break
-      case 'jump': this.tone(300, t, 0.2, 'square', 0.07, null, 700); break
-      case 'land': this.noise(t, 0.1, 0.2, 400, 'lowpass'); this.tone(90, t, 0.1, 'sine', 0.2, null, 50); break
-      case 'bump': this.noise(t, 0.08, 0.25, 600, 'lowpass'); this.tone(160, t, 0.12, 'square', 0.08, null, 90); break
-      case 'call': { const p = o.hot ? 1.25 : 1; this.voice(330 * p, t, 0.12, 0.09, 1300); this.voice(300 * p, t + 0.13, 0.12, 0.09, 1100); this.voice(360 * p, t + 0.26, 0.3, 0.1, 1200, 280 * p); break }
-      case 'order': this.tone(1320, t, 0.08, 'square', 0.06); this.tone(1760, t + 0.09, 0.12, 'square', 0.06); break
-      case 'ok': this.tone(784, t, 0.1, 'triangle', 0.15); this.tone(1046, t + 0.1, 0.1, 'triangle', 0.15); this.tone(1318, t + 0.2, 0.25, 'triangle', 0.15); break
-      case 'kanpai': for (let k = 0; k < 4; k++) this.tone(2500 + k * 300, t + k * 0.05, 0.25, 'sine', 0.08); break
-      case 'wrong': this.tone(220, t, 0.3, 'sawtooth', 0.1); this.tone(207, t + 0.3, 0.4, 'sawtooth', 0.1); break
-      case 'boss': this.voice(120, t, 0.35, 0.16, 650, 95); break
-      case 'yorokonde': this.voice(260, t, 0.12, 0.12, 1000); this.voice(330, t + 0.13, 0.25, 0.12, 1100, 300); break
-      case 'leave': this.voice(200, t, 0.5, 0.12, 700, 120); break
-      case 'end': this.tone(523, t, 0.15, 'square', 0.1); this.tone(659, t + 0.15, 0.15, 'square', 0.1); this.tone(784, t + 0.3, 0.4, 'square', 0.1); break
-      case 'stamp': this.noise(t, 0.15, 0.5, 300, 'lowpass'); this.tone(80, t, 0.2, 'sine', 0.4); break
-      case 'squeak': this.tone(1200 + Math.random() * 300, t, 0.07, 'sine', 0.03, null, 900); break
-    }
+    if (n === 'splash') return this.play(n, { vol: 0.5 + 0.5 * (o.v ?? 1) })
+    if (n === 'call') return this.play(n, { vol: 0.7, rate: o.hot ? 1.5 : 1.25, room: 0.3 })
+    if (n === 'boss') return this.play(n, { vol: 0.9, rate: 0.68, room: 0.3 })
+    if (n === 'yorokonde') return this.play(n, { vol: 0.7, rate: 1.35 })
+    if (n === 'leave') return this.play(n, { vol: 0.6 })
+    if (n === 'kanpai') { this.play('clink', { vol: 0.7, rate: 1.08 }); this.play('clink', { vol: 0.55, rate: 0.94, delay: 0.05 }); return this.play(n, { vol: 0.95 }) }
+    if (n === 'crash') this.duck(0.4, 0.9)
+    if (n === 'end') this.duck(0.3, 1.8)
+    return this.play(n, { vol: { tap: 0.45, squeak: 0.35, jump: 0.5, land: 0.55, order: 0.7, pour: 0.6 }[n] ?? 0.9 })
   },
-}
+})
 
 // ---------- 描画の土台
 const canvas = $('#gl')
@@ -651,9 +573,10 @@ function updateService(dt) {
 function serve(t, o) {
   const T = TT(), want = needCount([o])
   let ok = 0, spill = 0
+  const ids = []
   for (const id of Object.keys(want)) {
     const cups = S.tray.filter(c => c.id === id).sort((a, b) => b.fill - a.fill).slice(0, want[id])
-    for (const c of cups) { ok++; spill += 1 - c.fill; c.g.removeFromParent(); S.tray.splice(S.tray.indexOf(c), 1) }
+    for (const c of cups) { ok++; spill += 1 - c.fill; ids.push(c.id); c.g.removeFromParent(); S.tray.splice(S.tray.indexOf(c), 1) }
   }
   const missing = orderCount(o.list) - ok
   S.orders = S.orders.filter(x => x !== o)
@@ -668,10 +591,53 @@ function serve(t, o) {
   const caller = t.cust[0]
   if (wrong) { bubble(caller, extra.length ? T.wrong : T.short, 'hot', 2); Snd.sfx('wrong'); play(caller, 'emote-no', 0.15); setTimeout(() => bossSay(T.bossWrong, 1.6), 600) }
   else if (spill > 0.6) { bubble(caller, T.spilled, 'warm', 1.8); Snd.sfx('clink') }
-  else { bubble(caller, T.kanpai, '', 1.8); Snd.sfx('kanpai'); for (const c of t.cust) play(c, 'emote-yes', 0.15); ono('¥' + (ok * D.YEN.perCup), pos, 'yel', { size: 34 }) }
-  if (!wrong && ok >= 6) photoMoment(2 + ok * 0.1)
+  else { bubble(caller, T.kanpai, '', 1.8); for (const c of t.cust) play(c, 'emote-yes', 0.15); ono('¥' + (ok * D.YEN.perCup), pos, 'yel', { size: 34 }); startToast(t, ids, ok) }
   t.st = 'idle'; t.wait = 0; S.served++
   if (S.tut >= 0 && !S.orders.length) { S.tut = -1; store.set('tut', '1') }
+}
+// 乾杯: 持って行ったグラスを客が持ち上げて当てる→泡が飛ぶ→飲む。杯数が多いほど派手。運んだ分しか出さない
+const TOAST = { lift: 0.55, drink: 0.85, end: 1.8 }
+function startToast(t, ids, ok) {
+  endToast(t)
+  const cx = t.x, cz = SIDE(t.i) * ZA_Z, top = ZA_Y + 0.92, big = clamp(ok / 6, 0, 1)
+  const cups = ids.slice(0, 6).map((id, i) => {
+    const c = t.cust[i] || null, cup = makeCup(id); cup.g.scale.setScalar(1.3); scene.add(cup.g)
+    const a = i / Math.max(1, Math.min(ids.length, 6)) * Math.PI * 2, dx = c ? c.home[0] - cx : Math.cos(a) * 0.5, dz = c ? c.home[1] - cz : Math.sin(a) * 0.5, n = Math.hypot(dx, dz) || 1
+    const ux = dx / n, uz = dz / n
+    cup.from = new THREE.Vector3(cx + ux * 0.62, ZA_Y + 0.45, cz + uz * 0.62)
+    cup.hit = new THREE.Vector3(cx + ux * 0.16, top, cz + uz * 0.16)
+    cup.mouth = c ? new THREE.Vector3(c.home[0] - ux * 0.16, ZA_Y + 0.95, c.home[1] - uz * 0.16) : cup.from
+    cup.g.position.copy(cup.from); cup.holder = c; cup.ux = ux
+    return cup
+  })
+  t.toast = { t: 0, cups, big, ok, center: new THREE.Vector3(cx, top + 0.22, cz), rung: false }
+}
+function endToast(t) {
+  if (!t.toast) return
+  for (const cup of t.toast.cups) { cup.g.removeFromParent(); if (cup.holder) cup.holder.toastK = 0 }
+  t.toast = null
+}
+function updateToasts(dt) {
+  for (const t of S.tables) {
+    const q = t.toast; if (!q) continue
+    q.t += dt
+    if (!q.rung && q.t >= TOAST.lift) {
+      q.rung = true; Snd.sfx('kanpai')
+      const n = 10 + q.ok * 3, col = (DK[q.cups[0].id] || {}).liq ?? 0xf2a91a
+      fx.burst(q.center, { count: n * 2, color: 0xfff6d8, speed: 1.4 + q.big * 1.4, life: 0.55, size: 0.09 + q.big * 0.05 })
+      emitDrops(q.center, Math.min(24, n), 0xfff8e4, 0); emitDrops(q.center, Math.min(16, 4 + q.ok * 2), col, (S.x - t.x) * 0.5)
+      if (q.big > 0.5) fx.shake(0.012, 0.22)
+      for (const cup of q.cups) { setFill(cup, cup.fill - 0.14 - q.big * 0.12); if (cup.foam) cup.foam.scale.y = 0.2 }
+      if (q.ok >= 6) { photoMoment(2 + q.ok * 0.1); S.capTarget = q.center.clone() }
+    }
+    for (const cup of q.cups) {
+      if (q.t < TOAST.lift) { cup.g.position.lerpVectors(cup.from, cup.hit, ease(q.t / TOAST.lift)); cup.g.rotation.z = -cup.ux * 0.32 * ease(q.t / TOAST.lift) }
+      else if (q.t < TOAST.drink) { const k = (q.t - TOAST.lift) / (TOAST.drink - TOAST.lift); cup.g.position.lerpVectors(cup.hit, cup.mouth, ease(k) * 0.35); cup.g.position.y += Math.sin(k * Math.PI) * 0.09 }
+      else { const k = clamp((q.t - TOAST.drink) / (TOAST.end - TOAST.drink), 0, 1); cup.g.position.lerpVectors(cup.hit, cup.mouth, 0.35 + ease(k) * 0.65); cup.g.rotation.z = cup.ux * ease(k) * 1.15; setFill(cup, Math.min(cup.fill, 0.72 * (1 - k))) }
+      if (cup.holder) cup.holder.toastK = q.t < TOAST.lift ? ease(q.t / TOAST.lift) : q.t > TOAST.end - 0.15 ? (TOAST.end - q.t) / 0.15 : 1
+    }
+    if (q.t >= TOAST.end) endToast(t)
+  }
 }
 function bossSay(text, life = 1.6) { if (BOSS.c) { bubble(BOSS.c, text, 'boss', life); Snd.sfx('boss') } }
 
@@ -848,12 +814,13 @@ function updateObs(dt) {
     if (ob.t > ob.life || (ob.kind === 'towel' && (ob.x < 0 || ob.x > LEN))) { freeObs(ob); S.obs.splice(i, 1) }
   }
 }
+function setFlush(c, k) { if (c.flush === k) return; c.flush = k; c.g.traverse(m => { if (m.isMesh && m.material.emissive) { m.material.emissive.setHex(0xa02010); m.material.emissiveIntensity = 0.45 * k } }) }
 function standUp(t) {
-  const c = t.cust[1]; if (!c || t.standing) return
+  const c = t.cust[1]; if (!c || t.standing || t.toast) return
   t.standing = 1
   const ob = { kind: 'stand', x: c.home[0] + (c.home[0] > t.x ? 0.4 : -0.4), w: 0.42, h: 3, life: 4.2, t: 0, hit: 0, c, up: 0, tab: t }
   S.obs.push(ob)
-  bubble(c, pick([TT().drunkUp, TT().drunkUp2]), 'warm', 2.5)
+  bubble(c, pick([TT().drunkUp, TT().drunkUp2, TT().drunkUp3]), 'warm', 2.5)
 }
 function updateStander(ob, dt) {
   const c = ob.c, [hx, hz, hr] = c.home, k = ob.t < 0.5 ? ob.t / 0.5 : ob.t > ob.life - 0.6 ? (ob.life - ob.t) / 0.6 : 1
@@ -862,7 +829,10 @@ function updateStander(ob, dt) {
   c.g.rotation.y = lerp(hr, S.dir > 0 ? -Math.PI / 2 : Math.PI / 2, ease(k))
   if (k > 0.2) play(c, 'idle', 0.2); else play(c, 'sit', 0.2)
   c.armOpen = k
-  if (ob.t > ob.life - 0.01) { c.g.position.set(hx, ZA_Y, hz); c.g.rotation.y = hr; c.armOpen = 0; play(c, 'sit', 0.1); ob.tab.standing = 0 }
+  // 酔っ払い: 通路いっぱいに腕を広げて、ふらふら揺れる。顔が赤い
+  c.g.rotation.z = Math.sin(ob.t * 3.1) * 0.13 * k; c.g.rotation.x = Math.sin(ob.t * 2.3) * 0.05 * k
+  setFlush(c, k)
+  if (ob.t > ob.life - 0.01) { c.g.position.set(hx, ZA_Y, hz); c.g.rotation.set(0, hr, 0); c.armOpen = 0; setFlush(c, 0); play(c, 'sit', 0.1); ob.tab.standing = 0 }
 }
 // 写真（明細に貼る一番の場面）
 function photoMoment(score) { if (score > S.photoScore) { S.capAt = 0.05; S.capScore = score } }
@@ -870,7 +840,7 @@ const photoC = document.createElement('canvas'); photoC.width = photoC.height = 
 function capturePhoto() {
   render()
   const src = renderer.domElement, W = src.width, H = src.height, sx = W / innerWidth
-  const p = toScreen(_w.set(S.x, 1.5, 0)), s = Math.min(W, H) * 0.62
+  const p = toScreen(S.capTarget || _w.set(S.x, 1.5, 0)), s = Math.min(W, H) * 0.62; S.capTarget = null
   const cx = clamp(p.x * sx, s / 2, W - s / 2), cy = clamp(p.y * sx, s / 2, H - s / 2)
   try { photoC.getContext('2d').drawImage(src, cx - s / 2, cy - s / 2, s, s, 0, 0, 300, 300); S.photo = photoC } catch (e) {}
 }
@@ -878,7 +848,7 @@ function capturePhoto() {
 function updateGame(dt) {
   if (S.mode !== 'play') return
   S.t += dt
-  updateRider(dt); updateObs(dt); updateTables(dt); updateService(dt); updateFlying(dt); updateDrops(dt)
+  updateRider(dt); updateObs(dt); updateTables(dt); updateService(dt); updateFlying(dt); updateDrops(dt); updateToasts(dt)
   if (S.capAt !== undefined && S.capAt !== null) { S.capAt -= dt; if (S.capAt <= 0) { S.capAt = null; S.photoScore = S.capScore; S.doCap = true } }
   Snd.busy = clamp(busy() / 4, 0, 1)
   // 店長の声
@@ -937,7 +907,8 @@ function updateScene(dt) {
   for (const t of S.tables) for (const c of t.cust) {
     if (Math.abs(c.g.position.x - S.x) > 24) continue
     c.mixer.update(dt)
-    if (c.armOpen > 0 && c.armL) { c.armL.rotation.z = -1.3 * c.armOpen; c.armR.rotation.z = 1.3 * c.armOpen }
+    if (c.armOpen > 0 && c.armL) { const w = Math.sin(S.time * 5 + c.k) * 0.18, a = c.armOpen; c.armL.rotation.set(-1.25 * a, 0, (0.75 + w) * a); c.armR.rotation.set(-1.25 * a, 0, (-0.75 + w) * a) }
+    else if (c.toastK > 0 && c.armR) { c.armR.rotation.x = -2.1 * c.toastK }
   }
   if (BOSS.c) { BOSS.c.mixer.update(dt); BOSS.c.g.rotation.y = lerp(BOSS.c.g.rotation.y, Math.atan2(S.x - BOSS.c.g.position.x, -BOSS.c.g.position.z), 0.05) }
   // のれん・提灯
@@ -956,6 +927,7 @@ function updateScene(dt) {
 }
 const _cp = new THREE.Vector3(), _cl = new THREE.Vector3(), camP = new THREE.Vector3(), camL = new THREE.Vector3()
 let camFace = Math.PI / 2, peek = 0, camInit = false
+let camToast = 0; const camToastAt = new THREE.Vector3()
 function frameCamera(dt = 1) {
   const a = innerWidth / innerHeight, portrait = a < 1
   camera.aspect = a
@@ -972,11 +944,16 @@ function frameCamera(dt = 1) {
     const dist = portrait ? 3.5 : 3.9, h = portrait ? 3.0 : 2.85, side = portrait ? 0.85 : 1.0
     const nt = S.mode === 'play' && stopped() ? nearTable() : null
     const t = S.mode === 'play' ? (showing() ? showing().t : nt && ((nt.st === 'call' && S.orders.length < MAXO) || orderOf(nt)) ? nt : null) : null   // 用のある席だけ覗く
-    const want = t ? SIDE(t.i) * rz : 0
+    const toasting = nt && nt.toast && nt.toast.t < TOAST.end - 0.25
+    const want = toasting ? SIDE(nt.i) * rz : t ? SIDE(t.i) * rz : 0
     peek = snap ? want : lerp(peek, want, clamp(dt * 3, 0, 1))
+    // 乾杯の間だけ席のほうへ顔を向ける（動き出したらすぐ戻る）
+    camToast = snap ? 0 : lerp(camToast, toasting ? 1 : 0, clamp(dt * (toasting ? 5 : 8), 0, 1))
+    if (toasting) camToastAt.copy(nt.toast.center)
     const sd = side - peek * 0.35, ahead = 4.6 - Math.abs(peek) * 1.6, lk = portrait ? 1.1 : 1.6
     _cp.set(S.x - fx_ * dist + rx * sd, h, -fz_ * dist + rz * sd)
     _cl.set(S.x + fx_ * ahead + rx * peek * lk, 0.75 + Math.abs(peek) * 0.25, fz_ * ahead + rz * peek * lk)
+    if (camToast > 0.001) _cl.lerp(camToastAt, camToast)
   }
   _cp.x = clamp(_cp.x, W0 + 0.4, W1 - 0.4); _cp.z = clamp(_cp.z, -WALL_Z + 0.5, WALL_Z - 0.5)
   if (snap) { camP.copy(_cp); camL.copy(_cl) } else { const k = clamp(dt * 6, 0, 1); camP.lerp(_cp, k); camL.lerp(_cl, k) }
@@ -1003,7 +980,7 @@ function resetRun(seed) {
   noisePh = [R() * 6, R() * 6, R() * 6]
   clearFx(); clearTray(); clearObs()
   for (const c of flying) c.g.removeFromParent(); flying.length = 0
-  for (const t of S.tables) { t.st = 'idle'; t.wait = 0; t.standing = 0; for (const c of t.cust) { c.g.visible = true; c.armOpen = 0; const [x, z, r] = c.home; c.g.position.set(x, ZA_Y, z); c.g.rotation.y = r; play(c, 'sit', 0); if (c.anger) c.anger.visible = false } }
+  for (const t of S.tables) { endToast(t); t.st = 'idle'; t.wait = 0; t.standing = 0; for (const c of t.cust) { c.g.visible = true; c.armOpen = 0; setFlush(c, 0); const [x, z, r] = c.home; c.g.position.set(x, ZA_Y, z); c.g.rotation.set(0, r, 0); play(c, 'sit', 0); if (c.anger) c.anger.visible = false } }
   Object.assign(S, { t: 0, x: 1.2, v: 0, acc: 0, y: 0, vy: 0, dir: 1, th: 0, om: 0, fallT: 0, falls: 0, order: null, served: 0, nextCall: 1.2, money: { cups: 0, wrong: 0, spill: 0, broken: 0, left: 0 }, photo: null, photoScore: 0, capAt: null, fallWhy: [], lastKick: null, spillBy: {}, bossT: 6, ended: false, obsT: 8, result: null, jumpQ: 0, spillAcc: 0, heat: 0, turnQ: 0, turns: 0, inF: 0, inB: 0, keyF: 0, keyB: 0, face: Math.PI / 2, roll: 0, tiltT: 0 })
   camInit = false
   if (P.rider) { play(P.rider, 'holding-both', 0); P.body.rotation.z = 0 }
@@ -1188,6 +1165,9 @@ window.IZ = {
     obs(kind, x, o) { addObs(kind, x, o); return S.obs.length },
     clearObs() { clearObs() },
     stand(i) { standUp(S.tables[i]) },
+    toastInfo() { const t = S.tables.find(t => t.toast); return t ? { i: t.i, t: t.toast.t, n: t.toast.cups.length, rung: t.toast.rung, fill: t.toast.cups.map(c => +c.fill.toFixed(2)) } : null },
+    drunk() { const ob = S.obs.find(o => o.kind === 'stand'); return ob ? { open: +ob.c.armOpen.toFixed(2), z: +ob.c.g.rotation.z.toFixed(3), flush: ob.c.flush, armL: ob.c.armL.rotation.toArray().slice(0, 3), armR: ob.c.armR.rotation.toArray().slice(0, 3) } : null },
+    toast(i, ids) { const t = S.tables[i]; startToast(t, ids, ids.length); return !!t.toast },
     fall() { fall(1) },
     body(i) { const ob = S.obs[i]; const b = bodyBox(ob.c.g); return { x: ob.x, w: ob.w, h: ob.h, bx: [b.min.x, b.max.x], by: b.max.y, bz: [b.min.z, b.max.z] } },
     camera() { return { p: camera.position.toArray(), face: S.face, dir: S.dir } },
