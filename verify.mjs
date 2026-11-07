@@ -1,3 +1,4 @@
+import './mute-auto.mjs'  // テスト中は絶対に音を出さない（playwright を無音に差し替え）
 import { MUTE_LAUNCH, muteContext } from './mute.mjs'
 // verify.mjs の共通部品。コピーして iz を置き換え、ゲーム固有のテストを足す。node verify.mjs
 import { chromium, webkit } from 'playwright'
