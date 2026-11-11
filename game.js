@@ -1144,7 +1144,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape') closeMore() })
 $('#vResult').addEventListener('pointerdown', e => { if (!e.target.closest('button')) finishReveal() })
 $('#bLang').onclick = () => { Snd.init(); S.lang = S.lang === 'ja' ? 'en' : 'ja'; store.set('lang', S.lang); applyLang(); Snd.sfx('tap') }
 $('#bMute').onclick = () => { Snd.init(); Snd.setMute(!Snd.muted); syncMute() }
-document.addEventListener('visibilitychange', () => { if (Snd.ctx) { if (document.hidden) Snd.ctx.suspend(); else Snd.ctx.resume() } S.keyF = S.keyB = S.inF = S.inB = 0 })
+document.addEventListener('visibilitychange', () => { S.keyF = S.keyB = S.inF = S.inB = 0 })
 show('vTitle'); Snd.setTrack('title')
 requestAnimationFrame(loop)
 loadChars().then(() => { $('#loading').hidden = true; setupRider(); setupTables(); setupBoss() })
